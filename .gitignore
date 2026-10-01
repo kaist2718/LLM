@@ -1,0 +1,30 @@
+# -- 가상환경 / 파이썬 --
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# -- 모델 가중치 (약 7.6GB, 실행 시 자동 다운로드) --
+models/
+*.safetensors
+*.bin
+*.gguf
+
+# -- 실행 결과물 (채점표·답변 전문, 실행 시 자동 생성) --
+results/
+
+# -- 로컬 에이전트/에디터 설정 --
+.claude/
+.grok/
+.vscode/
+.idea/
+
+# -- OS 잡동사니 --
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# -- 환경 변수/비밀 --
+.env
+.env.*

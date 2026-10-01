@@ -1,0 +1,23 @@
+# Qwen3.5-9B 전용 — 파이썬 의존성 (uv + Python 3.12 + CUDA 환경)
+#
+# 설치:
+#   uv venv --python 3.12 .venv
+#   uv pip install --python .venv\Scripts\python.exe torch --index-url https://download.pytorch.org/whl/cu130
+#   uv pip install --python .venv\Scripts\python.exe -r requirements.txt
+
+# -- 웹 서버 + 추론 (필수) --
+flask>=3.0
+torch>=2.5
+transformers>=4.60  # Qwen3.5(qwen3_5 챗 템플릿) 지원 버전
+accelerate>=0.34
+bitsandbytes>=0.45
+
+# -- 모델 다운로드 스크립트 (dl_qwen35.py) --
+huggingface_hub>=0.25
+hf_transfer>=0.1       # HF_HUB_ENABLE_HF_TRANSFER 가속 — 다운로드 병목 해소
+
+# -- 문서 처리 (PDF/엑셀 첨부) --
+pymupdf>=1.24  # PDF -> 텍스트 추출
+pandas>=2.0    # 엑셀 파일 처리
+openpyxl>=3.1  # .xlsx 읽기 엔진
+xlrd>=2.0      # 레거시 .xls 읽기 엔진

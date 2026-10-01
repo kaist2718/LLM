@@ -1,0 +1,2620 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Qwen3.5-9B — 로컬 채팅</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%233b6eff'/%3E%3Ctext x='32' y='44' font-size='38' text-anchor='middle'%3E%F0%9F%92%AC%3C/text%3E%3C/svg%3E" />
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-theme" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+  /* -- design tokens (v2) -- */
+  :root {
+    --bg: #0b0d12; --bg-soft: #12141c; --bg-raised: #1a1d28;
+    --bg-user: #4f6ef7; --bg-user-hover: #6480ff;
+    --fg: #eceef4; --fg-dim: #9aa2b2; --fg-muted: #656d7e;
+    --accent: #6c8aff; --accent-dim: rgba(108,138,255,0.14);
+    --accent-2: #8b6cff;
+    --border: rgba(255,255,255,0.08); --border-light: rgba(255,255,255,0.13);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.35); --shadow-md: 0 8px 28px rgba(0,0,0,0.38);
+    --radius-sm: 10px; --radius: 14px; --radius-lg: 20px; --radius-xl: 26px;
+    --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, monospace;
+    --sidebar-w: 272px;
+    --content-max: 860px;   /* 채팅 본문 최대 너비 */
+    --reading-fs: 16px;     /* 답변 기본 글자 크기 */
+  }
+  [data-theme="light"] {
+    --bg: #f7f7f9; --bg-soft: #ffffff; --bg-raised: #ffffff;
+    --bg-user: #3355f1; --bg-user-hover: #4766ff;
+    --fg: #16181f; --fg-dim: #5b6270; --fg-muted: #9aa1ae;
+    --accent: #3355f1; --accent-dim: rgba(51,85,241,0.09);
+    --accent-2: #7c5cff;
+    --border: rgba(22,24,31,0.09); --border-light: rgba(22,24,31,0.14);
+    --shadow-sm: 0 1px 2px rgba(20,24,40,0.05); --shadow-md: 0 10px 30px rgba(20,24,40,0.1);
+  }
+
+  /* -- reset & base -- */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  @supports (height: 100dvh) { html, body { height: 100dvh; } }
+  body {
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", "Segoe UI Emoji", "Apple Color Emoji", system-ui, sans-serif;
+    font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+    background: var(--bg); color: var(--fg);
+    display: flex; flex-direction: column;
+    transition: background 0.35s, color 0.35s;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
+  ::selection { background: var(--accent-dim); }
+
+  /* -- header -- */
+  header {
+    padding: 0 20px; height: 56px; min-height: 56px;
+    background: var(--bg-soft); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 14px;
+    box-shadow: var(--shadow-sm); z-index: 30; transition: background 0.35s; flex-shrink: 0;
+    backdrop-filter: blur(12px);
+  }
+  header .title {
+    font-weight: 800; font-size: 16px; white-space: nowrap; letter-spacing: -0.3px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  header .title small { font-weight: 500; font-size: 11px; color: var(--fg-dim); background: var(--bg); padding: 3px 10px; border-radius: 999px; }
+  .controls { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .ctl { display: flex; flex-direction: column; gap: 1px; font-size: 10px; color: var(--fg-dim); }
+  .temp-ctl { min-width: 160px; }
+  .temp-track-wrap { position: relative; }
+  .temp-track-wrap input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent); height: 4px; }
+  .temp-marks { display: flex; justify-content: space-between; font-size: 9px; color: var(--fg-muted); margin-top: 1px; }
+  .temp-marks span { flex: 1; text-align: center; }
+
+  /* -- buttons -- */
+  button {
+    background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm);
+    padding: 8px 16px; font-weight: 700; cursor: pointer; font-size: 13px; font-family: inherit;
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    transition: all 0.15s; white-space: nowrap;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.1); }
+  button:active:not(:disabled) { transform: scale(0.97); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--fg-dim); border: 1px solid var(--border); font-weight: 600; }
+  button.ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); filter: none; }
+  button.danger { background: #e05560; }
+  button.small { padding: 4px 10px; font-size: 11px; border-radius: 6px; }
+  button.icon-btn { padding: 6px 9px; font-size: 16px; line-height: 1; }
+  #menuBtn { display: none; }
+
+  .loading-badge { display: none; font-size: 11px; color: #e0a020; align-items: center; gap: 6px; font-weight: 600; }
+  .loading-badge.active { display: inline-flex; }
+  .spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  .spinner.active { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* -- app shell -- */
+  .app-shell { flex: 1; min-height: 0; display: flex; }
+
+  /* -- sidebar -- */
+  .sidebar {
+    width: var(--sidebar-w); flex-shrink: 0; background: var(--bg-soft);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column;
+    transition: transform 0.25s ease, background 0.35s;
+  }
+  .sidebar-head { padding: 14px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border); }
+  #newChatBtn { width: 100%; }
+  #convSearch {
+    background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 8px 12px; font-size: 13px; font-family: inherit; outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  #convSearch:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .conv-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+  .conv-list > * { flex-shrink: 0; }
+  .conv-item {
+    display: flex; gap: 10px; align-items: center; padding: 9px 10px; border-radius: 10px;
+    cursor: pointer; position: relative; transition: background 0.15s;
+  }
+  .conv-item:hover { background: var(--bg-raised); }
+  .conv-item.active { background: var(--accent-dim); }
+  .conv-item.active .conv-title { color: var(--accent); }
+  .conv-ava {
+    width: 30px; height: 30px; border-radius: 8px; background: var(--bg-raised);
+    display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;
+    border: 1px solid var(--border);
+  }
+  .conv-body { flex: 1; min-width: 0; }
+  .conv-title { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conv-sub { font-size: 11px; color: var(--fg-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .conv-acts { display: none; gap: 2px; flex-shrink: 0; }
+  .conv-item:hover .conv-acts, .conv-item.active .conv-acts { display: flex; }
+  .conv-act { background: transparent; color: var(--fg-dim); padding: 4px 6px; font-size: 13px; border: none; line-height: 1; }
+  .conv-act:hover { color: var(--accent); filter: none; }
+  .conv-rename {
+    flex: 1; min-width: 0; background: var(--bg); color: var(--fg); border: 1px solid var(--accent);
+    border-radius: 6px; padding: 3px 7px; font-size: 13px; font-family: inherit; outline: none;
+  }
+  .conv-empty { font-size: 12px; color: var(--fg-muted); text-align: center; padding: 28px 8px; line-height: 1.8; }
+  .sidebar-foot { padding: 12px 14px; border-top: 1px solid var(--border); font-size: 12px; color: var(--fg-dim); }
+  .sidebar-foot label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #maxTokensSel, #personaSel {
+    background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 8px; font-size: 12px; font-family: inherit; outline: none; cursor: pointer;
+    max-width: 150px;
+  }
+  .sidebar-tip { margin-top: 10px; font-size: 11px; color: var(--fg-muted); line-height: 1.7; }
+  .sidebar-backdrop { display: none; }
+
+  /* -- main column -- */
+  .main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; }
+
+  /* -- chat container -- */
+  #messages {
+    flex: 1; min-height: 0; overflow-y: auto; padding: 28px 0 16px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  /* 스크롤되는 flex 컨테이너에서 메시지가 줄어들며 잘리는 현상 방지 */
+  #messages > * { flex-shrink: 0; }
+  .msg-wrapper { max-width: var(--content-max); width: 100%; margin: 0 auto; padding: 0 24px; display: flex; flex-direction: column; gap: 6px; }
+  @media (max-width: 980px) { .msg-wrapper { max-width: 100%; padding: 0 18px; } }
+  @media (max-width: 480px) { .msg-wrapper { padding: 0 12px; } }
+
+  /* -- intro card -- */
+  .intro-card {
+    text-align: center; padding: 60px 32px; max-width: 600px; margin: auto;
+    animation: fadeInUp 0.5s ease;
+  }
+  @keyframes fadeInUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+  .intro-card .quote-icon { font-size: 56px; margin-bottom: 20px; display: block; }
+  .intro-card .quote-text { font-size: 22px; font-weight: 800; line-height: 1.7; color: var(--fg); margin-bottom: 10px; letter-spacing: -0.3px; }
+  .intro-card .quote-author { font-size: 13px; color: var(--fg-dim); margin-bottom: 32px; font-weight: 500; }
+  .intro-card .guide { font-size: 13px; color: var(--fg-dim); line-height: 2; }
+  .intro-card .guide b { color: var(--accent); font-weight: 700; background: var(--accent-dim); padding: 1px 6px; border-radius: 4px; }
+  .row.bot { animation: fadeInUp 0.35s ease; }
+  .row.user { animation: fadeInUp 0.25s ease; }
+
+  /* -- message rows -- */
+  .row { display: flex; gap: 12px; align-items: flex-start; width: 100%; }
+  .row.user { justify-content: flex-end; }
+  .avatar {
+    width: 36px; height: 36px; border-radius: var(--radius-sm); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 18px;
+    background: var(--bg-raised); border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+  }
+  .row.user .avatar { order: 2; }
+
+  /* -- bubbles -- */
+  .msg {
+    max-width: 90%; padding: 16px 22px; border-radius: var(--radius-lg); line-height: 1.8; font-size: var(--reading-fs);
+    word-break: break-word; overflow-wrap: anywhere; position: relative;
+  }
+  .msg.user {
+    background: var(--bg-user); color: #fff;
+    border-bottom-right-radius: var(--radius-sm); margin-left: auto;
+    font-size: 15.5px; font-weight: 500;
+  }
+  .msg.bot {
+    background: var(--bg-raised); border: 1px solid var(--border);
+    border-bottom-left-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+  }
+  .msg .meta {
+    font-size: 11px; color: var(--fg-dim); margin-bottom: 8px;
+    display: flex; gap: 10px; align-items: center; font-weight: 500;
+  }
+  .row.user .msg .meta { color: rgba(255,255,255,0.6); justify-content: flex-end; }
+
+  .msg .btext { white-space: pre-wrap; }
+  .msg .btext.md { white-space: normal; }
+  .msg .btext.md p { margin: 0 0 12px; }
+  .msg .btext.md p:last-child { margin: 0; }
+  .msg .btext.md h1,.msg .btext.md h2,.msg .btext.md h3,.msg .btext.md h4 { margin: 20px 0 10px; font-weight: 700; line-height: 1.4; }
+  .msg .btext.md h1 { font-size: 1.35em; } .msg .btext.md h2 { font-size: 1.18em; } .msg .btext.md h3 { font-size: 1.06em; }
+  .msg .btext.md a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+  .msg .btext.md a:hover { filter: brightness(1.15); }
+  .msg .btext.md code {
+    background: var(--bg); padding: 2px 7px; border-radius: 5px;
+    font-family: var(--font-mono); font-size: 0.9em; font-weight: 500;
+  }
+  .row.user .msg .btext.md code { background: rgba(255,255,255,0.18); }
+  .msg .btext.md pre {
+    background: var(--bg); padding: 16px 18px 16px 18px; border-radius: 12px; overflow: auto; margin: 14px 0;
+    border: 1px solid var(--border); position: relative;
+  }
+  .msg .btext.md pre code { background: none; padding: 0; border: none; font-size: 13.5px; line-height: 1.65; }
+  .code-lang {
+    position: absolute; top: 8px; left: 12px; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase;
+    color: var(--fg-muted); font-family: var(--font-mono); pointer-events: none;
+  }
+  .code-copy {
+    position: absolute; top: 8px; right: 8px; padding: 3px 9px; font-size: 11px; z-index: 2;
+    background: var(--bg-raised); color: var(--fg-dim); border: 1px solid var(--border); opacity: 0.85;
+  }
+  .code-copy:hover { color: var(--accent); border-color: var(--accent); opacity: 1; filter: none; }
+  .msg .btext.md ul, .msg .btext.md ol { margin: 10px 0; padding-left: 26px; }
+  .msg .btext.md li { margin: 5px 0; line-height: 1.7; }
+  .msg .btext.md blockquote {
+    border-left: 3px solid var(--accent); margin: 12px 0; padding: 6px 0 6px 16px;
+    color: var(--fg-dim); font-style: italic; background: var(--accent-dim); border-radius: 0 8px 8px 0;
+  }
+  .msg .btext.md table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  .msg .btext.md .table-wrap { overflow-x: auto; margin: 12px 0; }
+  .msg .btext.md .table-wrap table { margin: 0; }
+  .msg .btext.md th, .msg .btext.md td { border: 1px solid var(--border); padding: 9px 13px; text-align: left; }
+  .msg .btext.md th { background: var(--bg); font-weight: 700; }
+  .msg .btext.md tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+  .msg .btext.md hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+
+  .cursor::after { content: "\258d"; color: var(--accent); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .actions { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .metrics { margin-top: 8px; font-size: 11px; color: var(--fg-dim); display: flex; gap: 10px; flex-wrap: wrap; }
+  .metrics b { color: var(--accent); font-weight: 700; }
+
+  .edit-area {
+    width: 100%; background: var(--bg); color: var(--fg); border: 2px solid var(--accent);
+    border-radius: var(--radius-sm); padding: 10px 14px; font-family: inherit; font-size: 15px;
+    resize: vertical; min-height: 44px; line-height: 1.6;
+  }
+
+  /* -- chips -- */
+  #chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding: 8px 0 20px; }
+  .chip {
+    background: var(--bg-raised); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 999px; padding: 9px 18px; font-size: 13px; cursor: pointer; font-weight: 600;
+    transition: all 0.2s; box-shadow: var(--shadow-sm);
+  }
+  .chip:hover { border-color: var(--accent); background: var(--accent-dim); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+
+  /* -- footer -- */
+  footer {
+    border-top: 1px solid var(--border); background: var(--bg-soft);
+    padding: 12px 24px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+    transition: background 0.35s; flex-shrink: 0;
+  }
+  @media (max-width: 640px) { footer { padding: 10px 14px 14px; gap: 8px; } }
+  #input {
+    flex: 1; background: var(--bg-raised); border: 1.5px solid var(--border);
+    border-radius: var(--radius); color: var(--fg); padding: 16px 18px;
+    font-size: 15.5px; font-family: inherit; resize: none; max-height: 220px;
+    line-height: 1.65; box-shadow: var(--shadow-sm);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  #input:hover { border-color: var(--border-light); }
+  #input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-dim); }
+  .send-col { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; justify-content: flex-end; }
+  .char-count { font-size: 11px; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+  .char-count.warn { color: #e0a020; font-weight: 700; }
+  #sendBtn { padding: 14px 24px; border-radius: var(--radius); font-size: 14px; }
+  @media (max-width: 640px) { #sendBtn { padding: 12px 18px; } }
+
+  /* -- 문서 첨부 (PDF/엑셀) -- */
+  #attachBtn { font-size: 18px; padding: 8px 10px; }
+  #attachBtn.active { color: var(--accent); }
+  .attach-row { flex: 0 0 100%; display: flex; gap: 8px; flex-wrap: wrap; }
+  .attach-row[hidden] { display: none; }
+  .attach-thumb { position: relative; width: 60px; height: 60px; border-radius: 8px; overflow: hidden; border: 1.5px solid var(--border); background: var(--bg-raised); }
+  .attach-thumb .rm { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,.65); color: #fff; border: none; font-size: 13px; line-height: 1; cursor: pointer; display:flex; align-items:center; justify-content:center; padding:0; }
+  .attach-thumb .rm:hover { background: rgba(0,0,0,.85); }
+
+  /* -- scroll-to-bottom button -- */
+  #scrollBtn {
+    position: absolute; right: 24px; bottom: 96px; width: 40px; height: 40px; border-radius: 50%;
+    background: var(--bg-raised); border: 1px solid var(--border); color: var(--fg);
+    box-shadow: var(--shadow-md); display: none; align-items: center; justify-content: center;
+    font-size: 18px; padding: 0; z-index: 20; cursor: pointer;
+  }
+  #scrollBtn.show { display: inline-flex; animation: fadeInUp 0.2s ease; }
+  #scrollBtn:hover { border-color: var(--accent); color: var(--accent); filter: none; }
+  @media (max-width: 640px) { #scrollBtn { right: 14px; bottom: 90px; } }
+
+  /* -- toast -- */
+  .model-toast {
+    position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--accent); color: #fff; padding: 10px 24px; border-radius: 999px;
+    font-size: 13px; font-weight: 700; z-index: 100; opacity: 0;
+    transition: opacity 0.3s, transform 0.3s; pointer-events: none; white-space: nowrap;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .model-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* -- responsive -- */
+  @media (max-width: 880px) {
+    .sidebar {
+      position: fixed; top: 0; bottom: 0; left: 0; z-index: 60;
+      transform: translateX(-100%); box-shadow: var(--shadow-md);
+    }
+    body.sidebar-open .sidebar { transform: translateX(0); }
+    body.sidebar-open .sidebar-backdrop { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 55; }
+    #menuBtn { display: inline-flex; }
+  }
+  @media (max-width: 768px) {
+    header { padding: 0 14px; height: auto; min-height: 50px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
+    .temp-ctl { min-width: 120px; }
+    .msg { max-width: 88%; }
+  }
+  @media (max-width: 480px) {
+    header { padding: 8px 10px; gap: 8px; }
+    header .title { font-size: 13px; }
+    .controls { gap: 4px; }
+    .temp-ctl { display: none; }
+    .msg { max-width: 94%; padding: 12px 16px; font-size: 14px; }
+    button { font-size: 12px; padding: 6px 12px; }
+    #input { font-size: 14px; padding: 12px 14px; }
+    #sendBtn { padding: 12px 16px; }
+    .intro-card { padding: 40px 20px; }
+    .intro-card .quote-text { font-size: 18px; }
+  }
+
+  /* ============================================================
+     고도화 추가 스타일
+     ============================================================ */
+
+  /* -- 드래그&드롭 오버레이 -- */
+  #dropOverlay {
+    position: fixed; inset: 0; z-index: 200; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(59,110,255,0.16); backdrop-filter: blur(2px);
+    pointer-events: none;
+  }
+  #dropOverlay.show { display: flex; }
+  #dropOverlay .drop-card {
+    border: 2.5px dashed var(--accent); border-radius: var(--radius-xl);
+    background: var(--bg-raised); padding: 40px 56px; text-align: center;
+    box-shadow: var(--shadow-md); color: var(--fg);
+  }
+  #dropOverlay .drop-card .drop-emoji { font-size: 48px; display: block; margin-bottom: 10px; }
+  #dropOverlay .drop-card .drop-title { font-size: 18px; font-weight: 800; }
+  #dropOverlay .drop-card .drop-sub { font-size: 13px; color: var(--fg-dim); margin-top: 6px; }
+
+  /* -- 상단 검색/바 (대화내 검색) -- */
+  #searchBar {
+    display: none; flex-shrink: 0; padding: 10px 24px; gap: 8px; align-items: center;
+    background: var(--bg-soft); border-bottom: 1px solid var(--border);
+  }
+  #searchBar.open { display: flex; animation: fadeInUp 0.2s ease; }
+  #searchInput {
+    flex: 1; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 999px;
+    padding: 7px 16px; font-size: 13px; font-family: inherit; color: var(--fg); outline: none;
+  }
+  #searchInput:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  #searchCount { font-size: 12px; color: var(--fg-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .search-btns { display: flex; gap: 4px; }
+  .search-btns button { padding: 5px 10px; font-size: 12px; }
+  mark.search-hit { background: rgba(224,160,32,0.4); color: inherit; border-radius: 3px; padding: 0 2px; }
+  mark.search-hit.active { background: var(--accent); color: #fff; }
+
+  /* -- 메시지 호버 액션바 -- */
+  .msg-actions {
+    position: absolute; top: -14px; right: 10px; display: none; gap: 2px;
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px;
+    padding: 2px; box-shadow: var(--shadow-md); z-index: 5;
+  }
+  .row.user .msg-actions { right: auto; left: 10px; }
+  .msg-wrap:hover .msg-actions, .msg-actions:focus-within { display: flex; }
+  .msg-action-btn {
+    background: transparent; color: var(--fg-dim); border: none; padding: 4px 7px;
+    font-size: 13px; border-radius: 6px; cursor: pointer; line-height: 1;
+  }
+  .msg-action-btn:hover { background: var(--bg-raised); color: var(--accent); filter: none; }
+  .msg-action-btn.active-fav { color: #e0a020; }
+  .msg { position: relative; }
+
+  /* -- 즐겨찾기(★) 패널 -- */
+  #favPanel {
+    display: none; flex-direction: column; border-bottom: 1px solid var(--border);
+    background: var(--bg-soft); max-height: 40vh; overflow-y: auto;
+  }
+  #favPanel.open { display: flex; animation: fadeInUp 0.2s ease; }
+  #favPanel .fav-head { padding: 12px 24px 6px; font-size: 13px; font-weight: 800; color: var(--accent); display: flex; align-items: center; justify-content: space-between; }
+  #favPanel .fav-empty { padding: 8px 24px 16px; font-size: 12px; color: var(--fg-muted); }
+  .fav-item { padding: 9px 24px; border-top: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
+  .fav-item:hover { background: var(--bg-raised); }
+  .fav-item .fav-meta { font-size: 11px; color: var(--fg-dim); margin-bottom: 3px; display: flex; gap: 8px; align-items: center; }
+  .fav-item .fav-text { font-size: 13px; color: var(--fg); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* -- 단축키 도움말 모달 -- */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 150;
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-backdrop.open { display: flex; animation: fadeInUp 0.2s ease; }
+  .modal-card {
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    max-width: 460px; width: 100%; box-shadow: var(--shadow-md); overflow: hidden;
+  }
+  .modal-card .m-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .modal-card .m-head h3 { font-size: 15px; font-weight: 800; }
+  .modal-card .m-body { padding: 12px 20px 18px; }
+  .shortcut-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .shortcut-row:last-child { border-bottom: none; }
+  .shortcut-row .keys { display: flex; gap: 4px; }
+  .kbd { background: var(--bg); border: 1px solid var(--border-light); border-bottom-width: 2px; border-radius: 5px; padding: 2px 7px; font-size: 11px; font-family: var(--font-mono); color: var(--fg-dim); }
+
+  /* -- 사이드바: 고정/섹션 -- */
+  .conv-section-label { font-size: 10px; color: var(--fg-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 10px 4px; }
+  .conv-item.pinned .conv-title::before { content: "📌 "; }
+  .conv-pin {
+    background: transparent; color: var(--fg-muted); border: none; padding: 4px 6px; font-size: 12px; line-height: 1; cursor: pointer; border-radius: 5px;
+  }
+  .conv-pin:hover { color: var(--accent); filter: none; }
+  .conv-pin.active { color: #e0a020; }
+
+  /* -- 팝업 (내보내기 등) -- */
+  .regen-model-pop {
+    position: absolute; bottom: 100%; margin-bottom: 6px; right: 0; left: auto;
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--shadow-md); padding: 5px; min-width: 200px; z-index: 10; display: none;
+  }
+  .regen-model-pop.open { display: block; }
+  .regen-model-pop button {
+    width: 100%; justify-content: flex-start; background: transparent; color: var(--fg);
+    border: none; padding: 8px 10px; font-weight: 600; font-size: 13px; border-radius: 7px;
+  }
+  .regen-model-pop button:hover { background: var(--bg-raised); color: var(--accent); filter: none; }
+
+  /* -- 더 보기(과거 메시지) 센티넬 -- */
+  .load-older {
+    text-align: center; padding: 12px; margin: 0 auto; max-width: var(--content-max);
+  }
+  .load-older button { font-size: 12px; }
+
+  @media (max-width: 480px) {
+    #searchBar { padding: 8px 12px; }
+    #favPanel .fav-head, #favPanel .fav-item, #favPanel .fav-empty { padding-left: 14px; padding-right: 14px; }
+  }
+
+  /* ============================================================
+     v2 — 상용 LLM 스타일 UI (아래 규칙이 위 규칙을 덮어씀)
+     ============================================================ */
+  html { scroll-behavior: smooth; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+  body { letter-spacing: -0.01em; }
+
+  /* -- 헤더 (글래스 바 + 브랜드) -- */
+  header {
+    height: 60px; min-height: 60px; padding: 0 18px; gap: 12px; position: relative;
+    background: var(--bg-soft);
+    background: color-mix(in srgb, var(--bg-soft) 80%, transparent);
+    backdrop-filter: blur(18px) saturate(1.5); -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    border-bottom: 1px solid var(--border); box-shadow: none;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+  .brand-mark {
+    width: 36px; height: 36px; border-radius: 11px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 18px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 6px 16px rgba(80,110,255,0.35);
+  }
+  .brand-name { font-weight: 800; font-size: 15.5px; letter-spacing: -0.4px; line-height: 1.25; white-space: nowrap; }
+  #modelLabel {
+    display: inline-block; margin-top: 2px; font-size: 10px; font-weight: 700;
+    color: var(--fg-dim); background: var(--bg); border: 1px solid var(--border);
+    padding: 1px 8px; border-radius: 999px; letter-spacing: 0;
+  }
+  .loading-badge {
+    background: var(--accent-dim); color: var(--accent); padding: 6px 14px;
+    border-radius: 999px; border: 1px solid var(--border); font-size: 11px;
+  }
+  .controls { gap: 6px; }
+  .controls .ghost { border-color: transparent; background: transparent; }
+  .controls .ghost:hover { background: var(--accent-dim); border-color: transparent; }
+  .controls .icon-btn { width: 34px; height: 34px; padding: 0; border-radius: 11px; font-size: 15px; }
+  .controls .small { height: 34px; border-radius: 11px; padding: 0 13px; font-size: 12px; }
+
+  /* -- 생성 설정 팝업 -- */
+  .settings-pop {
+    position: absolute; top: calc(100% + 10px); right: 14px; width: 276px; z-index: 90;
+    background: var(--bg-raised); border: 1px solid var(--border); border-radius: 18px;
+    box-shadow: var(--shadow-md); padding: 18px; display: flex; flex-direction: column; gap: 16px;
+    animation: fadeInUp 0.18s ease;
+  }
+  .settings-pop[hidden] { display: none; }
+  .pop-title { font-size: 10.5px; font-weight: 800; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+  .settings-pop .temp-ctl { min-width: 0; gap: 6px; }
+  .settings-pop .ctl label { font-size: 12px; display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; color: var(--fg); }
+  .settings-pop .temp-desc { color: var(--accent); font-weight: 700; }
+  .settings-pop input[type="range"] { accent-color: var(--accent); }
+  .pop-field { display: flex; flex-direction: column; gap: 7px; font-size: 12px; font-weight: 700; color: var(--fg); }
+  #maxTokensSel, #personaSel {
+    width: 100%; max-width: none; background: var(--bg); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 11px; padding: 9px 11px;
+    font-size: 13px; font-family: inherit; outline: none; cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  #maxTokensSel:focus, #personaSel:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+
+  /* -- 사이드바 -- */
+  .sidebar { background: var(--bg-soft); border-right: 1px solid var(--border); }
+  .sidebar-head { padding: 14px 12px 10px; gap: 9px; border-bottom: none; }
+  #newChatBtn {
+    gap: 8px; border-radius: 13px; padding: 11px 14px; font-size: 13.5px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 6px 16px rgba(80,110,255,0.3);
+  }
+  #newChatBtn:hover:not(:disabled) { filter: brightness(1.07); transform: translateY(-1px); }
+  #convSearch { border-radius: 12px; background: var(--bg); padding: 9px 13px; border-color: transparent; }
+  #convSearch:focus { border-color: var(--accent); }
+  .conv-list { padding: 4px 10px 10px; gap: 3px; }
+  .conv-item { border-radius: 12px; padding: 9px 10px; }
+  .conv-item:hover { background: var(--bg-raised); }
+  .conv-item.active { background: var(--accent-dim); }
+  .conv-item.active .conv-title { color: var(--accent); }
+  .conv-ava { border-radius: 9px; background: var(--bg); }
+  .conv-act { border-radius: 8px; }
+  .conv-act:hover { background: var(--bg-raised); }
+  .sidebar-foot { border-top: 1px solid var(--border); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .sidebar-tip { margin-top: 0; line-height: 1.75; }
+
+  /* -- 메시지 (사용자 말풍선 / 어시스턴트는 여백 있는 텍스트) -- */
+  .row.bot { gap: 11px; align-items: flex-start; }
+  .row.bot .avatar {
+    width: 32px; height: 32px; border-radius: 10px; font-size: 15px; margin-top: 3px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff;
+    border: none; box-shadow: 0 4px 12px rgba(80,110,255,0.3);
+  }
+  .row.user .avatar { display: none; }
+  .msg { max-width: 100%; }
+  .msg.bot { background: transparent; border: none; box-shadow: none; padding: 0 6px 6px; border-radius: 0; }
+  .msg.bot .meta { margin-bottom: 8px; }
+  .msg.bot .meta span:first-child { font-size: 12px; font-weight: 800; color: var(--fg); }
+  .msg.user {
+    background: linear-gradient(135deg, var(--bg-user), var(--accent-2));
+    color: #fff; border: none; border-radius: 18px 18px 5px 18px;
+    padding: 12px 18px; font-size: 15px; font-weight: 500;
+    box-shadow: 0 3px 14px rgba(70,100,240,0.22);
+  }
+  .row.user .msg .meta { color: rgba(255,255,255,0.65); }
+  .msg .btext.md pre { border-radius: 14px; }
+  .msg .btext.md code { border-radius: 6px; }
+  .metrics { margin-top: 10px; opacity: 0.85; }
+  .actions { margin-top: 12px; gap: 4px; }
+  .actions button {
+    background: transparent; color: var(--fg-dim); border: 1px solid transparent;
+    padding: 5px 11px; font-size: 11.5px; border-radius: 9px;
+  }
+  .actions button:hover { background: var(--bg-raised); color: var(--accent); border-color: var(--border); filter: none; }
+  @media (hover: hover) {
+    .actions { opacity: 0; transition: opacity 0.18s ease; }
+    .msg-wrapper:hover .actions, .actions:focus-within { opacity: 1; }
+  }
+  .msg-actions { border-radius: 10px; }
+  .msg-wrap:hover .msg-actions, .msg-wrapper:hover .msg-actions, .msg-actions:focus-within { display: flex; }
+
+  /* -- 웰컴 화면 + 제안 카드 -- */
+  .intro-card { padding: 56px 24px 26px; max-width: 720px; }
+  .intro-card .quote-icon {
+    width: 62px; height: 62px; margin: 0 auto 22px; border-radius: 18px;
+    display: flex; align-items: center; justify-content: center; font-size: 28px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff;
+    box-shadow: 0 12px 28px rgba(80,110,255,0.35);
+  }
+  .intro-card .quote-text {
+    font-size: 30px; font-weight: 800; letter-spacing: -0.7px; line-height: 1.35; margin-bottom: 12px;
+    background: linear-gradient(115deg, var(--fg) 30%, var(--accent));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .intro-card .quote-author { font-size: 12px; font-weight: 600; letter-spacing: 0; margin-bottom: 26px; }
+  .intro-card .guide { font-size: 13.5px; line-height: 1.9; }
+  #chips {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px; max-width: 720px; margin: 0 auto; padding: 10px 24px 24px;
+  }
+  .chip {
+    background: var(--bg-raised); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 15px; padding: 14px 16px; font-size: 13px; font-weight: 500;
+    text-align: left; line-height: 1.55; white-space: normal; justify-content: flex-start;
+    box-shadow: var(--shadow-sm); transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+  .chip:hover { transform: translateY(-2px); border-color: var(--accent); background: var(--bg-raised); box-shadow: var(--shadow-md); filter: none; }
+
+  /* -- 컴포저 (입력 카드) -- */
+  footer {
+    display: block; border-top: none; background: transparent;
+    padding: 8px 24px calc(14px + env(safe-area-inset-bottom));
+    max-width: calc(var(--content-max) + 48px); width: 100%; margin: 0 auto;
+  }
+  .composer {
+    background: var(--bg-raised); border: 1.5px solid var(--border);
+    border-radius: 22px; padding: 6px 8px 8px 18px;
+    box-shadow: var(--shadow-md); transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    display: flex; flex-direction: column;
+  }
+  .composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-dim), var(--shadow-md); }
+  .composer #input {
+    border: none; background: transparent; box-shadow: none; outline: none;
+    padding: 11px 4px 6px; font-size: 15.5px; max-height: 208px; resize: none;
+  }
+  .composer #input:focus { outline: none; border: none; box-shadow: none; }
+  .composer-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-left: 2px; }
+  #attachBtn {
+    width: 34px; height: 34px; padding: 0; border-radius: 11px; font-size: 15px;
+    background: transparent; color: var(--fg-dim); border: 1px solid var(--border);
+  }
+  #attachBtn:hover { color: var(--accent); border-color: var(--accent); filter: none; }
+  .composer-right { display: flex; align-items: center; gap: 11px; }
+  .char-count { font-size: 10.5px; color: var(--fg-muted); }
+  #sendBtn {
+    width: 38px; height: 38px; padding: 0; border-radius: 13px; font-size: 15px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff;
+    box-shadow: 0 5px 14px rgba(80,110,255,0.32);
+  }
+  #sendBtn:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+  #sendBtn.danger { background: #e05560; box-shadow: 0 5px 14px rgba(224,85,96,0.32); }
+  .composer-hint { text-align: center; font-size: 10.5px; color: var(--fg-muted); margin-top: 10px; line-height: 1.8; }
+  .composer-hint b { color: var(--fg-dim); font-weight: 700; }
+
+  /* -- 부가 요소 -- */
+  #scrollBtn {
+    width: 42px; height: 42px; border-radius: 50%; bottom: 116px; right: 26px;
+    background: var(--bg-raised); border: 1px solid var(--border); box-shadow: var(--shadow-md);
+  }
+  #scrollBtn:hover { filter: none; transform: translateY(-1px); }
+  .model-toast {
+    background: var(--fg); color: var(--bg); border-radius: 13px; padding: 11px 20px;
+    font-size: 12.5px; bottom: 128px; box-shadow: var(--shadow-md);
+  }
+  .modal-backdrop { background: rgba(8,10,16,0.6); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .modal-card { border-radius: 20px; box-shadow: var(--shadow-md); }
+  .modal-card .m-head h3 { font-size: 15px; letter-spacing: -0.3px; }
+  #dropOverlay { background: rgba(80,110,255,0.14); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  #dropOverlay .drop-card { border-radius: 24px; background: var(--bg-raised); }
+  #searchBar { padding: 10px 24px; background: var(--bg-soft); }
+  #searchInput { background: var(--bg); border-color: transparent; padding: 8px 16px; }
+  #favPanel .fav-head { padding-top: 14px; }
+  .regen-model-pop { border-radius: 14px; box-shadow: var(--shadow-md); padding: 6px; }
+  .regen-model-pop button { border-radius: 10px; padding: 9px 12px; }
+  .load-older button { border-radius: 999px; padding: 6px 16px; font-size: 11.5px; }
+  .attach-thumb { border-radius: 12px; }
+
+  /* -- 반응형 -- */
+  @media (max-width: 880px) {
+    .sidebar { border-right: none; }
+  }
+  @media (max-width: 768px) {
+    header { height: auto; min-height: 54px; padding: 8px 12px; gap: 8px; flex-wrap: wrap; }
+    .brand-mark { width: 32px; height: 32px; font-size: 16px; border-radius: 10px; }
+    .brand-name { font-size: 14px; }
+    .controls .small { padding: 0 10px; }
+    footer { padding: 6px 12px calc(12px + env(safe-area-inset-bottom)); }
+    .composer { border-radius: 18px; }
+    .composer-hint { display: none; }
+    .intro-card { padding: 36px 18px 18px; }
+    .intro-card .quote-text { font-size: 23px; }
+    #chips { grid-template-columns: 1fr; padding: 8px 14px 18px; }
+    .msg { max-width: 100%; }
+    .msg.user { font-size: 14.5px; padding: 11px 15px; }
+    .settings-pop { right: 10px; left: 10px; width: auto; }
+  }
+  @media (max-width: 480px) {
+    .settings-pop .temp-ctl { display: flex; }
+    .controls .small { font-size: 0; width: 34px; padding: 0; }
+    .controls .small::after { content: "⚡"; font-size: 15px; }
+  }
+
+  /* -- 질문 뱅크 -- */
+  .qbank-card { width: min(780px, 94vw); max-height: 86vh; display: flex; flex-direction: column; }
+  .qbank-card .m-body { overflow-y: auto; }
+  .qbank-tabs { display: flex; gap: 6px; margin-left: auto; margin-right: 12px; }
+  .qbank-tabs button { border: 1px solid var(--border-light); background: var(--bg-soft); color: var(--fg-dim); border-radius: 999px; padding: 6px 13px; font-size: 12.5px; cursor: pointer; }
+  .qbank-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  .qbank-tools { display: flex; gap: 7px; margin: 2px 0 12px; flex-wrap: wrap; align-items: center; }
+  .qbank-tools input[type="search"] { flex: 1; min-width: 150px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border-light); background: var(--bg-soft); color: var(--fg); }
+  .qbank-cat { border: 1px solid var(--border-light); background: var(--bg-soft); color: var(--fg-dim); border-radius: 999px; padding: 5px 11px; font-size: 11.5px; cursor: pointer; }
+  .qbank-cat.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #qbankCustomForm { border: 1px dashed var(--border-light); border-radius: 12px; padding: 12px; margin: 2px 0 12px; display: flex; flex-direction: column; gap: 8px; }
+  #qbankCustomForm input, #qbankCustomForm textarea { width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border-light); background: var(--bg-soft); color: var(--fg); font-family: inherit; font-size: 13px; resize: vertical; }
+  .q-accent { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 700; }
+  .q-check { display: flex; align-items: center; cursor: pointer; }
+  .q-check input { width: 16px; height: 16px; cursor: pointer; }
+  .q-sel { padding: 7px 10px; border-radius: 9px; border: 1px solid var(--border-light); background: var(--bg-soft); color: var(--fg); font-size: 12px; }
+  .q-run-head { background: var(--accent-dim); border: 1px solid var(--border-light); border-radius: 11px; padding: 11px 14px; font-size: 12.5px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .q-run-item { border: 1px solid var(--border); background: var(--bg-soft); border-radius: 11px; padding: 11px 14px; margin-bottom: 9px; }
+  .q-run-line { font-size: 12.5px; display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+  .q-run-status { margin-left: auto; color: var(--fg-muted); font-size: 11.5px; }
+  .q-run-q { margin-top: 6px; font-size: 12px; color: var(--fg-muted); white-space: pre-wrap; word-break: break-word; border-left: 3px solid var(--border-light); padding-left: 9px; }
+  .q-run-item details { margin-top: 8px; }
+  .q-run-item summary { cursor: pointer; font-size: 12px; color: var(--fg-dim); }
+  .q-run-text { margin-top: 7px; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto; color: var(--fg-dim); }
+  .q-pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .q-pill.ok { background: rgba(22,163,74,.16); color: #16a34a; }
+  .q-pill.bad { background: rgba(220,38,38,.13); color: #dc2626; }
+  .q-pill.na { background: var(--accent-dim); color: var(--fg-muted); }
+  .up { color: #16a34a; font-weight: 700; } .down { color: #dc2626; font-weight: 700; } .flat { color: var(--fg-muted); }
+  .q-note { color: var(--fg-muted); font-size: 11.5px; margin: 6px 0 10px; }
+  .q-trend { width: 100%; height: auto; display: block; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 6px; }
+  .q-grid { stroke: var(--border-light); stroke-width: 1; }
+  .q-ax { fill: var(--fg-muted); font-size: 11px; }
+  .q-line { fill: none; stroke-width: 2.5; }
+  .q-line.off, .q-dot.off { stroke: #dc2626; }
+  .q-line.on, .q-dot.on { stroke: #3b6eff; }
+  .q-dot.off { fill: #dc2626; } .q-dot.on { fill: #3b6eff; }
+  .q-legend { display: inline-block; width: 12px; height: 5px; border-radius: 3px; vertical-align: middle; margin: 0 2px; }
+  .q-legend.off { background: #dc2626; } .q-legend.on { background: #3b6eff; }
+  .q-item { border: 1px solid var(--border); background: var(--bg-soft); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+  .q-item .q-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .q-item .q-id { background: var(--accent-dim); color: var(--accent); font-weight: 700; font-size: 11.5px; border-radius: 8px; padding: 2px 8px; }
+  .q-item .q-title { font-weight: 700; font-size: 13.5px; flex: 1; }
+  .q-item .q-stars { color: #f59e0b; font-size: 12px; white-space: nowrap; }
+  .q-item .q-cat { color: var(--fg-muted); font-size: 11.5px; margin-top: 4px; }
+  .q-item .q-text { font-size: 13px; margin: 9px 2px; display: block; color: var(--fg-dim); line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+  .q-item .q-acts { display: flex; gap: 7px; margin-top: 9px; flex-wrap: wrap; }
+  .q-item .q-ans { margin-top: 9px; padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--accent-dim); border-radius: 8px; font-size: 12.5px; color: var(--fg-dim); line-height: 1.65; }
+  .qbank-empty { color: var(--fg-muted); text-align: center; padding: 28px 10px; font-size: 13px; }
+  .qbank-cards { display: flex; gap: 10px; margin: 4px 0 14px; flex-wrap: wrap; }
+  .qbank-stat { flex: 1; min-width: 120px; border: 1px solid var(--border); background: var(--bg-soft); border-radius: 12px; padding: 13px 14px; text-align: center; }
+  .qbank-stat-n { font-size: 21px; font-weight: 800; color: var(--accent); }
+  .qbank-stat-l { font-size: 11.5px; color: var(--fg-muted); margin-top: 3px; }
+  .q-sec { font-size: 13px; font-weight: 700; margin: 16px 0 9px; }
+  .q-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 11.5px; }
+  .q-row-l { width: 38px; font-weight: 700; color: var(--fg-dim); }
+  .q-row-b { flex: 1; }
+  .q-row-v { width: 74px; color: var(--fg-muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .q-bar { height: 9px; background: var(--accent-dim); border-radius: 999px; overflow: hidden; }
+  .q-bar-fill { height: 100%; border-radius: 999px; }
+  .q-bar-fill.off { background: #6c8aff; }
+  .q-bar-fill.on { background: #a78bfa; }
+  .q-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .q-table th, .q-table td { border-bottom: 1px solid var(--border); padding: 7px 9px; text-align: left; }
+  .q-table th { color: var(--fg-muted); font-weight: 600; }
+
+  /* -- 접근성: 모션 최소화 -- */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <button class="ghost icon-btn" id="menuBtn" aria-label="대화 목록" title="대화 목록">☰</button>
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true">🔮</div>
+    <div class="brand-text">
+      <div class="brand-name">Qwen3.5-9B</div>
+      <small id="modelLabel">로컬 채팅 · 4bit 양자화</small>
+    </div>
+  </div>
+  <div class="loading-badge" id="loadingBadge"><span class="spinner active" id="loadSpinner"></span> 모델 로딩 중…</div>
+  <div class="controls">
+    <button class="ghost small" id="preloadBtn" aria-label="모델 사전 로드" title="Qwen3.5-9B 미리 로드 (첫 응답 대기 시간 단축)">⚡ 모델 로드</button>
+    <button class="ghost icon-btn" id="searchBtn" aria-label="대화내 검색" title="대화내 검색 (Ctrl+K)">🔍</button>
+    <button class="ghost icon-btn" id="qbankBtn" aria-label="질문 뱅크" title="질문 뱅크 (Ctrl+B) — 클릭만으로 질문">📚</button>
+    <button class="ghost icon-btn" id="favBtn" aria-label="즐겨찾기" title="즐겨찾기 메시지">⭐</button>
+    <button class="ghost icon-btn" id="exportBtn" aria-label="대화 내보내기" title="내보내기 (HTML·MD·JSON)">📥</button>
+    <button class="ghost icon-btn" id="settingsBtn" aria-label="생성 설정" title="생성 설정 (온도·길이·말투)" aria-expanded="false">⚙️</button>
+    <button class="ghost icon-btn" id="themeBtn" aria-label="테마 전환" title="라이트/다크">🌙</button>
+  </div>
+  <div class="settings-pop" id="settingsPop" hidden>
+    <div class="pop-title">생성 설정</div>
+    <div class="ctl temp-ctl">
+      <label>
+        <span>온도 <span id="tempVal">0.7</span></span>
+        <span class="temp-desc" id="tempDesc">균형</span>
+      </label>
+      <div class="temp-track-wrap">
+        <input type="range" id="temp" min="0.2" max="1.5" step="0.1" value="0.7" aria-label="생성 온도" aria-valuemin="0.2" aria-valuemax="1.5" aria-valuenow="0.7" />
+        <div class="temp-marks"><span>정밀</span><span>균형</span><span>창의</span><span>실험</span></div>
+      </div>
+    </div>
+    <label class="pop-field">최대 길이
+      <select id="maxTokensSel" aria-label="최대 생성 길이">
+        <option value="1024">1,024</option>
+        <option value="2048">2,048</option>
+        <option value="4096">4,096</option>
+        <option value="8192">8,192</option>
+      </select>
+    </label>
+    <label class="pop-field">말투/역할
+      <select id="personaSel" aria-label="응답 스타일">
+        <option value="">기본 스타일</option>
+        <option value="답변은 2~3문장으로 아주 간결하게 하세요.">간결 답변</option>
+        <option value="질문의 배경과 근거를 포함해 구체적이고 상세하게 설명하세요.">상세 설명</option>
+        <option value="입력 내용을 자연스러운 한국어로 번역해 주세요.">번역 도우미</option>
+        <option value="문장의 어법·띄어쓰기·표현을 교정하고 수정 이유를 짧게 덧붙이세요.">글쓰기 교정</option>
+        <option value="코드를 먼저 제시하고 동작 원리와 주의점을 설명하세요.">코딩 도우미</option>
+        <option value="어려운 개념을 초등학생도 이해할 수 있도록 비유를 들어 설명하세요.">쉬운 설명</option>
+      </select>
+    </label>
+    <label class="pop-field" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="thinkingChk" style="width:auto" /> 추론(thinking) 모드 사용
+    </label>
+  </div>
+</header>
+
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar" aria-label="대화 목록">
+    <div class="sidebar-head">
+      <button id="newChatBtn" aria-label="새 대화 시작">＋ 새 대화</button>
+      <input type="search" id="convSearch" placeholder="🔍 대화 검색" aria-label="대화 검색" />
+    </div>
+    <div class="conv-list" id="convList" role="list"></div>
+    <div class="sidebar-foot">
+      <button class="ghost small" id="shortcutBtn" style="width:100%" aria-label="단축키 도움말">⌨️ 단축키 보기</button>
+      <div class="sidebar-tip">각 대화는 이 브라우저에 저장됩니다.<br />메시지를 더블클릭해 편집할 수 있어요.</div>
+    </div>
+  </aside>
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <main class="main">
+    <div id="favPanel" aria-label="즐겨찾기 메시지">
+      <div class="fav-head"><span>⭐ 즐겨찾기 메시지</span><button class="ghost small" id="favCloseBtn">닫기</button></div>
+      <div id="favList"></div>
+    </div>
+
+    <div id="searchBar" aria-label="대화내 검색">
+      <input type="search" id="searchInput" placeholder="이 대화에서 검색…" aria-label="검색어" />
+      <span id="searchCount"></span>
+      <div class="search-btns">
+        <button class="ghost small" id="searchPrev" title="이전 (Shift+Enter)">↑</button>
+        <button class="ghost small" id="searchNext" title="다음 (Enter)">↓</button>
+        <button class="ghost small" id="searchClose" title="닫기 (Esc)">✕</button>
+      </div>
+    </div>
+
+    <div id="messages" role="log" aria-live="polite"></div>
+
+    <button id="scrollBtn" aria-label="최신 메시지로 이동" title="최신으로">↓</button>
+
+    <footer>
+      <div id="attachRow" class="attach-row" hidden></div>
+      <div class="composer">
+        <textarea id="input" rows="1" placeholder="무엇이든 물어보세요…" aria-label="메시지 입력"></textarea>
+        <div class="composer-bar">
+          <button id="attachBtn" class="composer-btn" aria-label="문서 첨부" title="PDF/엑셀 문서 첨부">📎</button>
+          <div class="composer-right">
+            <span id="charCount" class="char-count">0자</span>
+            <button id="sendBtn" class="send-btn" aria-label="전송">➤</button>
+          </div>
+        </div>
+      </div>
+      <div class="composer-hint">Qwen3.5-9B는 실수할 수 있어요. 중요한 정보는 확인하세요. · <b>Enter</b> 전송 · <b>Shift+Enter</b> 줄바꿈 · <b>Esc</b> 중지</div>
+      <input type="file" id="fileInput" accept=".pdf,.xlsx,.xls" multiple hidden />
+    </footer>
+  </main>
+</div>
+
+<div class="model-toast" id="toast"></div>
+
+<!-- 드래그&드롭 오버레이 -->
+<div id="dropOverlay" aria-hidden="true">
+  <div class="drop-card">
+    <span class="drop-emoji">📎</span>
+    <div class="drop-title">파일을 놓아 첨부하기</div>
+    <div class="drop-sub">PDF · 엑셀 (첨부 문서는 Qwen3.5-9B가 읽습니다)</div>
+  </div>
+</div>
+
+<!-- 단축키 도움말 모달 -->
+<div class="modal-backdrop" id="shortcutModal" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-label="단축키 도움말">
+    <div class="m-head"><h3>⌨️ 키보드 단축키</h3><button class="ghost small" id="shortcutClose">✕</button></div>
+    <div class="m-body" id="shortcutBody"></div>
+  </div>
+</div>
+
+<!-- 질문 뱅크 모달 -->
+<div class="modal-backdrop" id="qbankModal" aria-hidden="true">
+  <div class="modal-card qbank-card" role="dialog" aria-label="질문 뱅크">
+    <div class="m-head">
+      <h3>📚 질문 뱅크</h3>
+      <div class="qbank-tabs">
+        <button data-tab="list" class="active">질문 목록</button>
+        <button data-tab="stats">📊 결과 비교</button>
+        <button data-tab="run" id="qbankRunTabBtn" hidden>▶ 실행 결과</button>
+      </div>
+      <button class="ghost small" id="qbankClose">✕</button>
+    </div>
+    <div class="m-body">
+      <div id="qbankListTab">
+        <div class="qbank-tools">
+          <input type="search" id="qbankSearch" placeholder="질문 검색…" aria-label="질문 뱅크 검색" />
+          <button class="ghost small" id="qbankRandom">🎲 랜덤 질문</button>
+          <button class="ghost small" id="qbankAddBtn">＋ 내 질문 추가</button>
+          <button class="ghost small" id="qbankSelAll">☑ 전체 선택</button>
+          <button class="ghost small" id="qbankSelNone">☐ 선택 해제</button>
+          <button class="ghost small q-accent" id="qbankRunBtn">▶ 선택 실행 (0)</button>
+        </div>
+        <div class="qbank-tools" id="qbankCats"></div>
+        <div class="qbank-tools">
+          <div class="qbank-tools" id="qbankStars" style="margin:0;flex:1"></div>
+          <select id="qbankSort" class="q-sel" aria-label="질문 정렬">
+            <option value="id">번호순</option>
+            <option value="stars">난이도순</option>
+            <option value="title">제목순</option>
+          </select>
+          <span id="qbankCount" class="flat"></span>
+        </div>
+        <div id="qbankCustomForm" hidden>
+          <input type="text" id="qbankCustomTitle" placeholder="제목 (예: 나만의 함정 문제)" aria-label="내 질문 제목" />
+          <textarea id="qbankCustomQ" rows="3" placeholder="질문 내용…" aria-label="내 질문 내용"></textarea>
+          <textarea id="qbankCustomA" rows="2" placeholder="정답 요지 (선택 — 채점 기준으로 사용)" aria-label="내 질문 정답 요지"></textarea>
+          <div class="qbank-tools" style="margin:2px 0 0">
+            <button class="ghost small q-accent" id="qbankCustomSave">💾 저장</button>
+            <button class="ghost small" id="qbankCustomCancel">취소</button>
+          </div>
+        </div>
+        <div id="qbankList"></div>
+      </div>
+      <div id="qbankStatsTab" hidden>
+        <div id="qbankStats"></div>
+      </div>
+      <div id="qbankRunTab" hidden>
+        <div id="qbankRun"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const msgs = $("messages"), input = $("input"), sendBtn = $("sendBtn"), scrollBtn = $("scrollBtn");
+
+// ---- 에러 로깅 헬퍼 ----
+window.onerror = (msg, src, line, col, err) => {
+  console.error("[JS Error]", msg, "at line", line, col, err);
+};
+window.addEventListener("unhandledrejection", e => {
+  console.error("[Unhandled Promise Rejection]", e.reason);
+});
+
+// ---- markdown options (줄바꿈 보존 B4) ----
+if (window.marked) { try { marked.setOptions({ gfm: true, breaks: true }); } catch(e){} }
+
+// ---- store (다중 대화, v3) ----
+const STORE_KEY = "llmcomp.v3";
+const LEGACY = { hist: "llmcomp.v2.history", set: "llmcomp.v2.settings", theme: "llmcomp.v2.theme" };
+let store = { conversations: [], activeId: null, settings: { temp: 0.7, theme: "dark", maxTokens: 2048, thinking: false } };
+
+let history = [];          // activeConv().messages 참조 (기존 로직 호환)
+const currentModelKey = "qwen35";   // Qwen3.5-9B 전용 단일 모델
+let sending = false, abortCtrl = null;
+let pendingMedia = []; // [{name, kind:"pdf"|"excel", file:File}] — 다음 전송에 첨부될 문서
+
+function uid() { return "c_" + Math.random().toString(36).slice(2, 10); }
+function titleFromText(t) { return (t||"").replace(/\s+/g," ").trim().slice(0, 24) || "새 대화"; }
+
+function saveStore() { try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch(e){} }
+function activeConv() { return store.conversations.find(c => c.id === store.activeId) || null; }
+function syncHistoryRef() { const c = activeConv(); history = c ? c.messages : []; }
+
+function newConversation(model, opts={}) {
+  const c = { id: uid(), title: "새 대화", model: model || currentModelKey, messages: [], createdAt: Date.now(), updatedAt: Date.now() };
+  store.conversations.unshift(c);
+  store.activeId = c.id;
+  if (!opts.silent) saveStore();
+  return c;
+}
+function ensureConv() { let c = activeConv(); if (!c) c = newConversation(currentModelKey); return c; }
+
+function switchConversation(id) {
+  if (sending || id === store.activeId) { closeSidebar(); return; }
+  store.activeId = id; saveStore(); syncHistoryRef();
+  pendingMedia = [];
+  renderedCount = INIT_RENDER_WINDOW;
+  updateModelLabel(); renderAll(); closeSidebar(); input.focus();
+}
+function deleteConversation(id) {
+  if (sending) { toastMsg("응답 생성 중에는 삭제할 수 없어요"); return; }
+  const c = store.conversations.find(x => x.id === id); if (!c) return;
+  if (!confirm(`"${c.title}" 대화를 삭제할까요? 이 작업은 되돌릴 수 없습니다.`)) return;
+  store.conversations = store.conversations.filter(x => x.id !== id);
+  if (store.activeId === id) {
+    store.activeId = store.conversations[0] ? store.conversations[0].id : null;
+    if (!store.activeId) newConversation(currentModelKey);
+    syncHistoryRef();
+  }
+  saveStore(); updateModelLabel(); renderedCount = INIT_RENDER_WINDOW; renderAll();
+}
+function renameConversation(id) {
+  const c = store.conversations.find(x => x.id === id); if (!c) return;
+  const item = document.querySelector(`.conv-item[data-id="${id}"]`);
+  if (!item) return;
+  const titleEl = item.querySelector(".conv-title");
+  const inp = document.createElement("input");
+  inp.type = "text"; inp.className = "conv-rename"; inp.value = c.title; inp.setAttribute("aria-label","대화 제목");
+  titleEl.replaceWith(inp); inp.focus(); inp.select();
+  const done = (commit) => {
+    if (commit) { const v = inp.value.trim(); if (v) { c.title = v; saveStore(); } }
+    renderConvList($("convSearch").value);
+  };
+  inp.addEventListener("keydown", ev => {
+    if (ev.key === "Enter" && !ev.isComposing && ev.keyCode !== 229) { ev.preventDefault(); done(true); }
+    else if (ev.key === "Escape") { ev.preventDefault(); done(false); }
+  });
+  inp.addEventListener("blur", () => done(true));
+}
+
+function migrateLegacy() {
+  try {
+    const d = JSON.parse(localStorage.getItem(LEGACY.hist) || "{}");
+    if (d.history && d.history.length) {
+      const c = { id: uid(), title: titleFromMessages(d.history), model: d.model || "qwen35", messages: d.history, createdAt: 0, updatedAt: 0 };
+      store.conversations = [c];
+      store.activeId = c.id;
+    }
+  } catch(e) {}
+  try {
+    const s = JSON.parse(localStorage.getItem(LEGACY.set) || "{}");
+    if (s.temp) store.settings.temp = parseFloat(s.temp);
+  } catch(e) {}
+  try {
+    const t = localStorage.getItem(LEGACY.theme);
+    if (t === "light" || t === "dark") store.settings.theme = t;
+  } catch(e) {}
+  if (!store.conversations.length) newConversation(currentModelKey, { silent: true });
+  saveStore();
+}
+function titleFromMessages(msgs2) {
+  const u = (msgs2||[]).find(m => m.role === "user");
+  return u ? titleFromText(u.content) : "가져온 대화";
+}
+function loadStore() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d && Array.isArray(d.conversations)) {
+        store = { conversations: d.conversations, activeId: d.activeId, settings: Object.assign({ temp:0.7, theme:"dark", maxTokens:2048, thinking:false }, d.settings||{}) };
+        store.conversations.forEach(ensureMsgIds);
+        if (!store.conversations.length) newConversation(currentModelKey, { silent: true });
+        if (!store.activeId || !activeConv()) store.activeId = store.conversations[0].id;
+        return;
+      }
+    }
+  } catch(e) {}
+  migrateLegacy();
+}
+
+// ---- sidebar render ----
+function renderConvList(filter) {
+  const list = $("convList");
+  const f = (filter ?? $("convSearch").value).trim().toLowerCase();
+  const items = store.conversations.filter(c =>
+    !f || (c.title||"").toLowerCase().includes(f) || c.messages.some(m => (m.content||"").toLowerCase().includes(f))
+  );
+  list.innerHTML = "";
+  if (!items.length) {
+    const div = document.createElement("div");
+    div.className = "conv-empty";
+    div.textContent = f ? "검색 결과가 없습니다." : "아직 대화가 없습니다.\n＋ 새 대화를 눌러 시작하세요.";
+    list.appendChild(div); return;
+  }
+  const pinned = items.filter(c => c.pinned);
+  const rest = items.filter(c => !c.pinned);
+  const renderItem = (c) => {
+    const item = document.createElement("div");
+    item.className = "conv-item" + (c.pinned ? " pinned" : "") + (c.id === store.activeId ? " active" : "");
+    item.dataset.id = c.id; item.setAttribute("role","listitem");
+    const info = getModelInfo(c.model);
+    const last = c.messages.length ? c.messages[c.messages.length-1] : null;
+    const sub = last ? (last.content||"").replace(/\s+/g," ").slice(0,22) : "빈 대화";
+    const favN = c.messages.filter(m=>m.fav).length;
+    item.innerHTML = `
+      <div class="conv-ava">${info.avatar}</div>
+      <div class="conv-body">
+        <div class="conv-title">${escapeHtml(c.title||"새 대화")}</div>
+        <div class="conv-sub">${c.messages.length}메시지${favN?` · ⭐${favN}`:""} · ${escapeHtml(sub)}</div>
+      </div>
+      <div class="conv-acts">
+        <button class="conv-act conv-pin ${c.pinned?"active":""}" data-act="pin" title="고정" aria-label="대화 고정">${c.pinned?"📌":"📍"}</button>
+        <button class="conv-act" data-act="rename" title="이름 변경" aria-label="이름 변경">✏️</button>
+        <button class="conv-act" data-act="delete" title="삭제" aria-label="삭제">🗑️</button>
+      </div>`;
+    item.addEventListener("click", e => {
+      if (e.target.closest(".conv-act")) return;
+      switchConversation(c.id);
+    });
+    list.appendChild(item);
+  };
+  if (pinned.length) { const lab = document.createElement("div"); lab.className="conv-section-label"; lab.textContent="고정됨"; list.appendChild(lab); pinned.forEach(renderItem); }
+  if (pinned.length && rest.length) { const lab = document.createElement("div"); lab.className="conv-section-label"; lab.textContent="대화"; list.appendChild(lab); }
+  rest.forEach(renderItem);
+}
+
+// ---- scroll ----
+function isNearBottom() { return msgs.scrollTop + msgs.clientHeight >= msgs.scrollHeight - 60; }
+function updateScrollBtn() {
+  scrollBtn.classList.toggle("show", !isNearBottom() && msgs.scrollHeight > msgs.clientHeight + 120);
+}
+function scrollBottom(force=false) { if (force || isNearBottom()) msgs.scrollTop = msgs.scrollHeight; updateScrollBtn(); }
+function scrollToLatest() { const last = msgs.lastElementChild; if (last) last.scrollIntoView({behavior:"smooth", block:"end"}); }
+function now() { return new Date().toLocaleTimeString("ko-KR", {hour:"2-digit",minute:"2-digit"}); }
+msgs.addEventListener("scroll", updateScrollBtn, { passive: true });
+
+// ---- sidebar mobile ----
+function openSidebar() { document.body.classList.add("sidebar-open"); }
+function closeSidebar() { document.body.classList.remove("sidebar-open"); }
+$("menuBtn").addEventListener("click", () => document.body.classList.toggle("sidebar-open"));
+$("sidebarBackdrop").addEventListener("click", closeSidebar);
+
+// ---- toast ----
+let toastTimer;
+function toastMsg(text) {
+  const t = $("toast"); t.textContent = text; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 1500);
+}
+
+// ---- theme ----
+function applyTheme(t) {
+  document.documentElement.setAttribute("data-theme", t);
+  $("themeBtn").textContent = t === "light" ? "☀️" : "🌙";
+  const hl = $("hljs-theme");
+  if (hl) hl.href = t === "light"
+    ? "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"
+    : "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css";
+}
+$("themeBtn").addEventListener("click", () => {
+  const nxt = (document.documentElement.getAttribute("data-theme")||"dark") === "dark" ? "light" : "dark";
+  store.settings.theme = nxt; applyTheme(nxt); saveStore();
+});
+
+// ---- temp ----
+const TEMP_DESCS = {
+  0.2:"매우 정밀",0.3:"정밀",0.4:"신중",0.5:"안정",0.6:"약간 창의",
+  0.7:"균형",0.8:"창의",0.9:"적극 창의",1.0:"실험",1.2:"대담",1.5:"최대 실험"
+};
+function updateTempDisplay(v) {
+  $("tempVal").textContent = v.toFixed(1);
+  const keys = Object.keys(TEMP_DESCS).map(Number).sort((a,b)=>a-b);
+  let d = TEMP_DESCS[keys[0]];
+  for (const k of keys) if (v >= k) d = TEMP_DESCS[k];
+  $("tempDesc").textContent = d;
+}
+$("temp").addEventListener("input", e => { updateTempDisplay(parseFloat(e.target.value)); store.settings.temp = parseFloat(e.target.value); saveStore(); });
+
+// ---- 말투/역할 프리셋 ----
+$("personaSel").addEventListener("change", e => {
+  store.settings.persona = e.target.value; saveStore();
+  toastMsg(e.target.value ? "✓ 말투/역할 적용됨" : "✓ 기본 스타일로 복원");
+});
+$("thinkingChk").addEventListener("change", e => {
+  store.settings.thinking = e.target.checked; saveStore();
+  toastMsg(e.target.checked ? "✓ 추론(thinking) 모드 켜짐" : "✓ 추론 모드 꺼짐");
+});
+
+// ---- 생성 설정 팝업 ----
+function toggleSettings(force) {
+  const pop = $("settingsPop");
+  const open = (force != null) ? force : pop.hidden;
+  pop.hidden = !open;
+  $("settingsBtn").setAttribute("aria-expanded", String(open));
+}
+$("settingsBtn").addEventListener("click", e => { e.stopPropagation(); toggleSettings(); });
+document.addEventListener("click", e => {
+  const pop = $("settingsPop");
+  if (!pop.hidden && !pop.contains(e.target) && !$("settingsBtn").contains(e.target)) toggleSettings(false);
+});
+
+// ---- 모델 사전 로드 ----
+$("preloadBtn").addEventListener("click", async () => {
+  const btn = $("preloadBtn");
+  if (btn.disabled) return;
+  btn.disabled = true; btn.textContent = "⏳ 로딩 중…";
+  const t0 = Date.now();
+  try {
+    const r = await fetch("/api/preload/qwen35", { method: "POST" });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+    const secs = ((Date.now() - t0) / 1000).toFixed(1);
+    let extra = "";
+    try {
+      const s = await (await fetch("/api/status")).json();
+      if (s.gpu) extra = ` · GPU ${s.gpu.allocated_mib} MiB 사용`;
+    } catch (e) {}
+    toastMsg(`⚡ Qwen3.5-9B 준비 완료 (${secs}초${extra})`);
+  } catch (e) {
+    toastMsg("모델 로드 실패: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "⚡ 모델 로드";
+  }
+});
+
+// ---- model (Qwen3.5-9B 전용 단일 모델) ----
+const MODEL_INFO = { qwen35: { name: "Qwen3.5-9B", avatar: "🔮" }, ax31: { name: "A.X 3.1 Light (이전)", avatar: "🔷" } };
+function updateModelLabel() { $("modelLabel").textContent = "로컬 채팅 · 4bit 양자화"; }
+function getModelInfo(key) {
+  return MODEL_INFO[key] || { name: "이전 모델", avatar: "🤖" };
+}
+
+// ---- rows ----
+function mkRow(who, modelKey, opt={}) {
+  const wrap = document.createElement("div"); wrap.className = "msg-wrapper";
+  if(opt.midx!=null) wrap.dataset.midx = opt.midx;
+  if(opt.msgid!=null) wrap.dataset.msgid = opt.msgid;
+  const row = document.createElement("div"); row.className = "row "+who;
+  if (who === "user") {
+    const av = document.createElement("div"); av.className = "avatar"; av.textContent = "👤";
+    const inner = document.createElement("div"); inner.style.cssText="display:flex;flex-direction:column;align-items:flex-end;max-width:82%";
+    const meta = document.createElement("div"); meta.className = "meta"; meta.textContent = now();
+    const bubble = document.createElement("div"); bubble.className = "msg user";
+    inner.appendChild(meta); inner.appendChild(bubble);
+    row.appendChild(inner); row.appendChild(av);
+    row._bubble = bubble;
+  } else {
+    const info = getModelInfo(modelKey || currentModelKey);
+    const av = document.createElement("div"); av.className = "avatar"; av.textContent = info.avatar;
+    const inner = document.createElement("div"); inner.style.maxWidth="82%";
+    const meta = document.createElement("div"); meta.className = "meta";
+    meta.innerHTML = `<span>${info.name}</span><span>${now()}</span>`;
+    const bubble = document.createElement("div"); bubble.className = "msg bot";
+    const bt = document.createElement("div"); bt.className = "btext";
+    bubble.appendChild(meta); bubble.appendChild(bt);
+    inner.appendChild(bubble);
+    row.appendChild(av); row.appendChild(inner);
+    row._bubble = bubble; row._bt = bt;
+  }
+  wrap.appendChild(row);
+  msgs.appendChild(wrap); scrollBottom(); return row;
+}
+
+// ---- markdown ----
+function escapeHtml(s) { return (s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function renderMarkdown(text) {
+  let html;
+  if (window.marked) { try { html = marked.parse(text); } catch(e) { html = escapeHtml(text); } }
+  else { html = escapeHtml(text); }
+  if (window.DOMPurify) html = DOMPurify.sanitize(html);
+  return html;
+}
+function highlightCode(root) { if (window.hljs) root.querySelectorAll("pre code").forEach(el=>{try{hljs.highlightElement(el)}catch(e){}}); }
+function enhanceCodeBlocks(root) {
+  root.querySelectorAll("pre").forEach(pre => {
+    if (pre.querySelector(".code-copy")) return;
+    const code = pre.querySelector("code"); if (!code) return;
+    // 언어 배지 (highlight.js가 code에 language-xxx 클래스를 붙임)
+    const lm = (code.className || "").match(/language-([\w+#-]+)/);
+    if (lm) {
+      const lbl = document.createElement("span");
+      lbl.className = "code-lang"; lbl.textContent = lm[1];
+      pre.appendChild(lbl);
+    }
+    const btn = document.createElement("button");
+    btn.className = "code-copy"; btn.type = "button"; btn.textContent = "복사";
+    btn.addEventListener("click", () => {
+      navigator.clipboard.writeText(code.textContent);
+      btn.textContent = "복사됨 ✓"; setTimeout(()=>btn.textContent="복사", 1200);
+    });
+    pre.appendChild(btn);
+  });
+}
+function wrapTables(root) {
+  // 표가 말풍선 밖으로 넘치지 않도록 가로 스크롤 래퍼로 감싼다
+  root.querySelectorAll("table").forEach(tbl => {
+    if (tbl.parentElement && tbl.parentElement.classList.contains("table-wrap")) return;
+    const w = document.createElement("div"); w.className = "table-wrap";
+    tbl.replaceWith(w); w.appendChild(tbl);
+  });
+}
+function finalizeMarkdown(bt) { highlightCode(bt); enhanceCodeBlocks(bt); wrapTables(bt); }
+
+// -- 긴 답변 접기/펼치기 (가독성 보조) --
+function setupCollapsible(bt, acts) {
+  requestAnimationFrame(() => {
+    const TH = Math.max(520, Math.round(window.innerHeight * 0.62));
+    if (!bt || bt.scrollHeight <= TH + 48) return;
+    const btn = document.createElement("button");
+    btn.className = "ghost small"; btn.type = "button";
+    btn.textContent = "▾ 내용 접기";
+    btn.setAttribute("aria-label", "내용 접기/펼치기");
+    let collapsed = false;
+    btn.addEventListener("click", () => {
+      collapsed = !collapsed;
+      if (collapsed) {
+        bt.style.maxHeight = TH + "px"; bt.style.overflowY = "auto";
+        btn.textContent = "▴ 내용 펼치기";
+      } else {
+        bt.style.maxHeight = "none"; bt.style.overflowY = "visible";
+        btn.textContent = "▾ 내용 접기";
+      }
+      scrollBottom();
+    });
+    if (acts) acts.appendChild(btn); else if (bt.parentElement) bt.parentElement.insertBefore(btn, bt.nextSibling);
+  });
+}
+
+// ---- intro ----
+const INTRO = {
+  qwen35: { quote: "안녕하세요,\n무엇이든 물어보세요", from: "Qwen3.5-9B · 4bit 양자화", guide: "질문·번역·글쓰기·코딩·문서 분석까지 도와드려요. <b>말투/역할</b>로 답변 스타일도 바꿀 수 있습니다" },
+};
+function renderIntro() {
+  document.querySelectorAll(".intro-card").forEach(n=>n.remove());
+  if (history.length > 0 || sending) return;
+  const info = INTRO[currentModelKey] || INTRO.qwen35;
+  const card = document.createElement("div"); card.className = "intro-card";
+  card.innerHTML = `<div class="quote-icon">🔮</div><div class="quote-text">${info.quote.replace(/\n/g,"<br>")}</div><div class="quote-author">${info.from}</div><div class="guide">${info.guide}</div>`;
+  msgs.appendChild(card);
+  scrollBottom(true);
+}
+
+// -- chips --
+const CHIPS = {
+  qwen35: ["이 모델은 무엇을 할 수 있나요?","어려운 개념을 쉽게 설명해 주세요.","이 글의 어법을 교정해 주세요.","코드를 작성하거나 고쳐 주세요.","보고서 초안을 써 주세요.","(📎 PDF/엑셀 첨부 후) 이 문서를 요약해 주세요."],
+};
+function renderChips() {
+  document.querySelectorAll("#chips").forEach(n=>n.remove());
+  renderIntro();
+  if (history.length > 0 || sending) return;
+  const box = document.createElement("div"); box.id = "chips";
+  msgs.insertBefore(box, msgs.firstChild);
+  (CHIPS[currentModelKey] || CHIPS.qwen35).forEach(c => {
+    const b = document.createElement("button"); b.className = "chip"; b.textContent = c;
+    b.onclick = () => submitUser(c); box.appendChild(b);
+  });
+}
+
+// -- state --
+function setSending(on) {
+  sending = on;
+  sendBtn.innerHTML = on ? "⏹" : "➤";
+  sendBtn.classList.toggle("danger", on);
+  sendBtn.setAttribute("aria-label", on ? "생성 중지" : "전송");
+  input.placeholder = on ? "응답 생성 중… (Esc 키로 중단)" : "무엇이든 물어보세요…";
+}
+function setLoading(on) { $("loadingBadge").classList.toggle("active", on); $("loadSpinner").classList.toggle("active", on); }
+
+// -- SSE --
+async function streamChat(onToken, signal, onStatus, onIdle) {
+  console.log("[streamChat] Starting with model:", currentModelKey, "messages:", history.length);
+  // 연결(POST) 실패 시에만 최대 2회 재시도. 스트리밍 도중 끊김은 중복 토큰 방지상 재시도 안 함.
+  let resp = null, lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      resp = await fetch("/api/chat", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model: currentModelKey,
+          messages: history,
+          temperature: parseFloat($("temp").value),
+          max_tokens: store.settings.maxTokens,
+          thinking: !!store.settings.thinking,
+          ...(store.settings.persona ? { system: store.settings.persona } : {}),
+        }),
+        signal,
+      });
+      break;
+    } catch (e) {
+      lastErr = e;
+      if (signal.aborted || e.name === "AbortError") throw e;
+      if (attempt < 2) { if (onStatus) onStatus(`연결 재시도 중… (${attempt+1}/2)`); await new Promise(r => setTimeout(r, 700*(attempt+1))); }
+      else throw e;
+    }
+  }
+  if (!resp) throw lastErr || new Error("연결 실패");
+  if (!resp.ok || !resp.body) throw new Error("stream error "+resp.status);
+  const reader = resp.body.getReader(), dec = new TextDecoder();
+  let buf = "", errMsg = null, doneFlag = false, metrics = null;
+  while (true) {
+    const {done,value} = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, {stream:true});
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const raw = buf.slice(0,i); buf = buf.slice(i+2);
+      for (const line of raw.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        let obj; try { obj = JSON.parse(line.slice(6)); } catch(e) { continue; }
+        if (obj.token) { onToken(obj.token); if (onIdle) onIdle(); }
+        else if (obj.status) { setLoading(true); if (onStatus) onStatus(obj.status); if (onIdle) onIdle(); }
+        else if (obj.done) { doneFlag = true; if (obj.metrics) metrics = obj.metrics; }
+        else if (obj.error) errMsg = obj.error;
+      }
+    }
+  }
+  setLoading(false);
+  return { done: doneFlag, error: errMsg, metrics };
+}
+
+// -- flow --
+function fillUserBubble(bubble, text) {
+  bubble.innerHTML = "";
+  if (text) { const t = document.createElement("div"); t.textContent = text; t.style.whiteSpace = "pre-wrap"; bubble.appendChild(t); }
+}
+async function submitUser(text) {
+  if (sending) return;
+  text = (text ?? input.value).trim();
+  const media = pendingMedia.slice();
+  if (!text && !media.length) return;
+  if (!text && media.length) text = "첨부한 문서를 분석해 주세요.";
+  ensureConv(); syncHistoryRef();
+  const c = activeConv();
+
+  // ---- 문서 파일 업로드 (multipart → file_id) ----
+  // 문서를 서버에 먼저 업로드해 base64 JSON 전송을 피함
+  const documentFileIds = [];  // PDF/엑셀 파일 ID
+  const uploadedFileIds = [];
+
+  for (const m of media) {
+    if (!m.file) {
+      toastMsg(`파일을 다시 첨부해 주세요: ${m.name}`);
+      return;
+    }
+    try {
+      const formData = new FormData();
+      formData.append("file", m.file, m.name);
+      const resp = await fetch("/api/media", { method: "POST", body: formData });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || `upload failed (${resp.status})`);
+      }
+      const result = await resp.json();
+      uploadedFileIds.push(result.file_id);
+      documentFileIds.push(result.file_id);
+    } catch (e) {
+      await Promise.all(uploadedFileIds.map(id => fetch(`/api/media/${encodeURIComponent(id)}`, {method:"DELETE"}).catch(() => {})));
+      toastMsg(`파일 업로드 실패: ${m.name} — ${e.message}`);
+      return;
+    }
+  }
+
+  // 메시지 구성 (서버 전송용)
+  // 이전 메시지의 첨부 ID를 유지해야 후속 대화에서 문서 문맥이 보존된다.
+  const userMsg = { id: uid(), role: "user", content: text };
+  if (documentFileIds.length) userMsg.document_file_ids = documentFileIds;
+
+  history.push(userMsg);
+  const msgIdx = history.length - 1;
+
+  if ((c.title === "새 대화" || !c.title) && c.messages.filter(m=>m.role==="user").length === 1) c.title = titleFromText(text);
+  c.updatedAt = Date.now();
+  saveStore(); renderConvList();
+
+  const ur = mkRow("user", null, { midx: msgIdx, msgid: userMsg.id });
+  fillUserBubble(ur._bubble, text);
+  attachUserActions(ur.parentElement, userMsg.id);
+  pendingMedia = []; renderAttachRow();
+  input.value = ""; autoGrow(); updateCharCount(); renderChips();
+  await runAssistant();
+}
+async function runAssistant() {
+  setSending(true);
+  setLoading(true);
+  const savedModel = currentModelKey;
+  const row = mkRow("bot", savedModel), bt = row._bt;
+  bt.classList.add("cursor");
+  bt.innerHTML = `<span class="turn-status" style="color:var(--fg-dim)">⏳ 모델 로딩 대기 중... (잠시만 기다려 주세요)</span>`;
+  let raw = "", timedOut = false, idleTimer;
+  // 문서 분석이 포함되면 응답까지 시간이 더 걸릴 수 있음 (5분)
+  const idleMs = 300000;
+  const resetIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(()=>{timedOut=true;if(abortCtrl)abortCtrl.abort()}, idleMs); };
+  abortCtrl = new AbortController(); resetIdle();
+
+  let firstTokenReceived = false;
+  let lastPaint = 0;
+  function appendToken(tok) {
+    if (!firstTokenReceived) {
+      firstTokenReceived = true;
+      bt.classList.add("md");
+      setLoading(false);
+    }
+    raw += tok; resetIdle();
+    // 스트리밍 중에도 마크다운을 실시간 렌더링 (150ms 스로틀로 부하 제어)
+    const t = Date.now();
+    if (t - lastPaint > 150) { lastPaint = t; bt.innerHTML = renderMarkdown(raw); }
+    scrollBottom();
+  }
+  function showStatus(status) {
+    // 로딩 상태 표시 (아직 토큰 안 왔을 때)
+    if (!firstTokenReceived) {
+      bt.textContent = status;
+    }
+    scrollBottom();
+  }
+
+  console.log("[runAssistant] Starting streamChat for model:", savedModel);
+  try {
+    const res = await streamChat(
+      appendToken,
+      abortCtrl.signal,
+      showStatus,
+      resetIdle
+    );
+    console.log("[runAssistant] streamChat completed:", res);
+    bt.classList.remove("cursor");
+    setLoading(false);
+    if (timedOut) {
+      bt.textContent = raw || "(응답 시간 초과)";
+      if (raw) { bt.classList.add("md"); commitAssistant(row, raw, savedModel, null); }
+    } else if (res.error && !raw) {
+      bt.textContent = "("+res.error+")";
+    } else {
+      bt.classList.add("md"); bt.innerHTML = renderMarkdown(raw); finalizeMarkdown(bt);
+      addMetrics(row._bubble, res.metrics); commitAssistant(row, raw, savedModel, res.metrics);
+    }
+  } catch(e) {
+    bt.classList.remove("cursor");
+    if (e.name === "AbortError") {
+      bt.classList.add("md"); bt.innerHTML = renderMarkdown(raw)||"<i>(중단됨)</i>"; finalizeMarkdown(bt);
+      if (raw) commitAssistant(row, raw, savedModel, null);
+    } else { bt.textContent = "(오류: "+e.message+")"; }
+  } finally {
+    clearTimeout(idleTimer); setSending(false); abortCtrl = null; scrollBottom(); input.focus(); renderChips();
+  }
+}
+
+// -- actions --
+function addActions(row, raw, msg) {
+  const acts = document.createElement("div"); acts.className = "actions";
+  const copy = document.createElement("button"); copy.className = "ghost small"; copy.textContent = "복사";
+  copy.setAttribute("aria-label","응답 복사");
+  copy.onclick = () => { navigator.clipboard.writeText(raw); copy.textContent = "복사됨 ✓"; setTimeout(()=>copy.textContent="복사", 1200); };
+  acts.appendChild(copy);
+  if (msg && msg.id) {
+    const regen = document.createElement("button"); regen.className = "ghost small"; regen.textContent = "↻ 다시";
+    regen.setAttribute("aria-label","재생성"); regen.title="재생성";
+    regen.onclick = () => regenerate(msg.id);
+    const fav = document.createElement("button"); fav.className = "ghost small"; fav.setAttribute("data-fav", msg.id);
+    fav.setAttribute("aria-label","즐겨찾기"); fav.title="즐겨찾기에 추가";
+    const syncFav = () => { const on = !!(activeConv().messages.find(m=>m.id===msg.id)||{}).fav; fav.textContent = on ? "★" : "☆"; fav.style.color = on ? "#e0a020" : ""; };
+    syncFav();
+    fav.onclick = () => { toggleFav(msg.id); syncFav(); };
+    acts.appendChild(regen); acts.appendChild(fav);
+  }
+  row._bubble.appendChild(acts);
+  setupCollapsible(row._bt, acts);
+}
+
+// 스트리밍 완료 후 assistant 메시지를 history 에 커밋하고 액션/식별자 연결
+function commitAssistant(row, raw, model, metrics){
+  if(!raw) return null;
+  const c = activeConv();
+  const msg = { id: uid(), role:"assistant", content:raw, model, metrics: metrics||undefined };
+  c.messages.push(msg); saveStore();
+  const wrap = row.parentElement;
+  if(wrap){ wrap.dataset.msgid = msg.id; wrap.dataset.midx = String(c.messages.length-1); }
+  addActions(row, raw, msg);
+  renderConvList();
+  return msg;
+}
+function addMetrics(bubble, m) {
+  if (!m) return;
+  const el = document.createElement("div"); el.className = "metrics";
+  const p = [];
+  if (m.cite) p.push("📖 인용 <b>"+m.cite+"</b>");
+  p.push("¶ <b>"+m.para+"</b>문단");
+  if (m.elapsed_ms) p.push("⏱ <b>"+(m.elapsed_ms/1000).toFixed(1)+"</b>s");
+  if (m.toks_per_s) p.push("⚡ <b>"+m.toks_per_s+"</b> tok/s");
+  el.innerHTML = p.join(" · "); bubble.appendChild(el);
+}
+
+// -- edit user msg (IME 가드 + 이전 응답까지 정상 제거) --
+msgs.addEventListener("dblclick", e => {
+  const bubble = e.target.closest(".msg.user"); if (!bubble || sending) return;
+  const wrap = bubble.closest(".msg-wrapper");
+  const c = activeConv(); if (!c || !wrap) return;
+  // 지연 렌더링(이전 메시지 더 보기)과 무관하게 dataset.midx로 정확한 메시지를 찾는다.
+  const target = wrap.dataset.midx != null ? c.messages[Number(wrap.dataset.midx)] : c.messages.find(m => m.id === wrap.dataset.msgid);
+  if (!target || target.role !== "user") return;
+  const origText = target?.content || "";
+  const ta = document.createElement("textarea"); ta.className = "edit-area"; ta.value = origText;
+  ta.style.height = Math.min(ta.scrollHeight, 160)+"px";
+  bubble.replaceWith(ta); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+  const commit = () => {
+    const newText = ta.value.trim(); if (!newText) { ta.replaceWith(bubble); return; }
+    const histIdx = c.messages.indexOf(target);
+    if (histIdx >= 0) {
+      const restored = {...target, content:newText};
+      c.messages = c.messages.slice(0, histIdx);
+      c.messages.push(restored);
+      history = c.messages; // 재동기화
+    }
+    c.updatedAt = Date.now(); saveStore();
+    // 편집된 사용자 말풍선은 유지하고, 그 뒤 메시지만 제거한 뒤 재생성한다.
+    ta.replaceWith(bubble);
+    fillUserBubble(bubble, newText);
+    attachUserActions(wrap, target.id);
+    let el = wrap.nextSibling;
+    while (el) { const nxt = el.nextSibling; el.remove(); el = nxt; }
+    renderChips(); runAssistant();
+  };
+  ta.addEventListener("keydown", ev => { if (ev.key==="Enter"&&!ev.shiftKey&&!ev.isComposing&&ev.keyCode!==229) { ev.preventDefault(); commit(); } });
+  ta.addEventListener("blur", () => setTimeout(() => { if (document.body.contains(ta)) commit(); }, 120));
+});
+
+// -- export --
+$("exportBtn").addEventListener("click", () => {
+  if (!history.length) { toastMsg("내보낼 대화가 없어요"); return; }
+  const blob = new Blob([JSON.stringify(history,null,2)],{type:"application/json"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = "chat_"+new Date().toISOString().slice(0,10)+".json"; a.click(); URL.revokeObjectURL(a.href);
+});
+
+// -- new chat / sidebar actions --
+$("newChatBtn").addEventListener("click", () => {
+  if (sending) { toastMsg("응답 생성 중에는 새 대화를 시작할 수 없어요"); return; }
+  newConversation(currentModelKey); syncHistoryRef();
+  pendingMedia = []; renderAttachRow();
+  renderedCount = INIT_RENDER_WINDOW;
+  renderAll(); closeSidebar(); input.focus();
+});
+$("convList").addEventListener("click", e => {
+  const btn = e.target.closest(".conv-act"); if (!btn) return;
+  const item = btn.closest(".conv-item"); if (!item) return;
+  const id = item.dataset.id;
+  if (btn.dataset.act === "rename") renameConversation(id);
+  else if (btn.dataset.act === "delete") deleteConversation(id);
+  else if (btn.dataset.act === "pin") togglePinConv(id);
+});
+$("convSearch").addEventListener("input", () => renderConvList());
+$("maxTokensSel").addEventListener("change", e => { store.settings.maxTokens = parseInt(e.target.value,10)||2048; saveStore(); });
+
+// -- input --
+function autoGrow() { input.style.height="auto"; input.style.height=Math.min(input.scrollHeight,220)+"px"; }
+function updateCharCount() {
+  const n = input.value.length;
+  const el = $("charCount"); el.textContent = n+"자"; el.classList.toggle("warn", n > 4000);
+}
+sendBtn.addEventListener("click", () => { if (sending) { abortCtrl&&abortCtrl.abort(); } else submitUser(); });
+input.addEventListener("keydown", e => {
+  if (e.key==="Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); submitUser(); }
+});
+document.addEventListener("keydown", e => { if (e.key==="Escape"&&sending) { abortCtrl&&abortCtrl.abort(); e.preventDefault(); } });
+input.addEventListener("input", () => { autoGrow(); updateCharCount(); });
+
+// -- 문서 첨부 (PDF/엑셀) --
+function mediaKind(file) {
+    if (file.name?.toLowerCase().endsWith(".pdf") || file.type === "application/pdf") return "pdf";
+    if (file.name?.toLowerCase().match(/\.xlsx?$/i)) return "excel";
+    return "unknown";
+}
+function renderAttachRow() {
+  const row = $("attachRow");
+  if (!pendingMedia.length) { row.hidden = true; row.innerHTML = ""; return; }
+  row.hidden = false; row.innerHTML = "";
+  pendingMedia.forEach((m, i) => {
+    const t = document.createElement("div"); t.className = "attach-thumb"; t.title = m.name || "";
+    const icon = m.kind === "excel" ? "📊" : "📄";
+    t.innerHTML = `<svg width="60" height="60" viewBox="0 0 60 60" style="display:block"><rect width="60" height="60" rx="8" fill="var(--bg)"/><text x="30" y="38" font-size="28" text-anchor="middle">${icon}</text></svg>`;
+    const rm = document.createElement("button"); rm.className = "rm"; rm.type = "button"; rm.textContent = "×";
+    rm.setAttribute("aria-label", "첨부 제거");
+    rm.onclick = () => { pendingMedia.splice(i, 1); renderAttachRow(); };
+    row.appendChild(t);
+  });
+}
+$("attachBtn").addEventListener("click", () => $("fileInput").click());
+$("fileInput").addEventListener("change", async (e) => {
+  for (const f of Array.from(e.target.files || [])) {
+    const kind = mediaKind(f);
+    if (kind === "unknown") { toastMsg(`지원하지 않는 파일: ${f.name} (PDF/엑셀만 가능)`); continue; }
+    pendingMedia.push({ name: f.name || kind, kind, file: f });
+  }
+  e.target.value = ""; renderAttachRow(); input.focus();
+});
+
+// 파일 드롭 처리는 wireEnhancements()의 단일 window 리스너에서 담당합니다.
+
+// -- render history --
+function renderHistory() {
+  msgs.innerHTML = "";
+  ensureMsgIds(activeConv());
+  const total = history.length;
+  const start = Math.max(0, total - renderedCount);
+  if (start > 0) {
+    const lo = document.createElement("div"); lo.className = "load-older";
+    lo.innerHTML = `<button class="ghost small">▴ 이전 메시지 ${start}개 더 보기</button>`;
+    lo.querySelector("button").onclick = () => { renderedCount += 60; renderHistory(); scrollBottom(false); };
+    msgs.appendChild(lo);
+  }
+  for (let idx = start; idx < total; idx++) {
+    const m = history[idx];
+    if (m.role === "user") {
+      const r = mkRow("user", null, { midx: idx, msgid: m.id });
+      fillUserBubble(r._bubble, m.content);
+      attachUserActions(r.parentElement, m.id);
+    } else {
+      const r = mkRow("bot", m.model, { midx: idx, msgid: m.id });
+      r._bt.classList.add("md"); r._bt.innerHTML = renderMarkdown(m.content||""); finalizeMarkdown(r._bt);
+      if (m.content) { addActions(r, m.content, m); if (m.metrics) addMetrics(r._bubble, m.metrics); }
+    }
+  }
+  scrollBottom(true);
+  setTimeout(() => { scrollToLatest(); updateScrollBtn(); }, 100);
+}
+function renderAll() { renderHistory(); renderChips(); renderConvList(); }
+
+
+
+// ============================================================
+// 고도화 기능 (UX · 대화관리 · 안정성)
+// ============================================================
+const INIT_RENDER_WINDOW = 60;       // 초기 표시 메시지 수 (이전은 지연 렌더)
+let renderedCount = INIT_RENDER_WINDOW;
+
+// 메시지에 안정적인 id 보장 (즐겨찾기·분기·검색 참조용)
+function ensureMsgIds(c){ if(!c||!c.messages) return; for(const m of c.messages){ if(!m.id) m.id = uid(); } }
+
+function dateStr(){ return new Date().toISOString().slice(0,10); }
+function downloadFile(name, content, type="text/plain"){
+  const blob = new Blob([content],{type});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = name; a.click(); URL.revokeObjectURL(a.href);
+}
+function pulse(el){ if(!el) return; el.style.transition="background 0.3s"; el.style.background="var(--accent-dim)"; setTimeout(()=>{el.style.background="";},1100); }
+function closeAllPanels(){
+  $("favPanel")?.classList.remove("open");
+  $("searchBar")?.classList.remove("open");
+}
+
+// ---- 즐겨찾기(★) ----
+function toggleFav(msgId){
+  const c = activeConv(); if(!c) return;
+  const m = c.messages.find(x=>x.id===msgId); if(!m) return;
+  m.fav = !m.fav; saveStore();
+  document.querySelectorAll(`[data-fav="${msgId}"]`).forEach(b=>b.classList.toggle("active-fav",!!m.fav));
+  renderFavPanel();
+}
+function renderFavPanel(){
+  const list = $("favList"); if(!list) return;
+  list.innerHTML = "";
+  const favs = [];
+  for(const c of store.conversations) for(const m of c.messages) if(m.fav) favs.push({conv:c, msg:m});
+  if(!favs.length){ list.innerHTML = '<div class="fav-empty">아직 즐겨찾기한 답변이 없어요. 답변의 ⭐ 버튼으로 저장하세요.</div>'; return; }
+  for(const {conv,msg} of favs){
+    const it = document.createElement("div"); it.className = "fav-item";
+    const info = getModelInfo(msg.model);
+    it.innerHTML = `<div class="fav-meta">${info.avatar} ${escapeHtml(info.name)} · <span style="color:var(--fg-muted)">${escapeHtml(conv.title||"대화")}</span></div><div class="fav-text">${escapeHtml((msg.content||"").replace(/\s+/g," ").slice(0,180))}</div>`;
+    it.addEventListener("click", ()=>{
+      if(conv.id !== store.activeId){ switchConversation(conv.id); setTimeout(()=>scrollToMsg(msg.id),120); }
+      else scrollToMsg(msg.id);
+      closeSidebar();
+    });
+    list.appendChild(it);
+  }
+}
+function scrollToMsg(msgId){
+  const wrap = msgs.querySelector(`.msg-wrapper[data-msgid="${msgId}"]`);
+  if(wrap){ wrap.scrollIntoView({behavior:"smooth",block:"center"}); pulse(wrap); }
+}
+
+// ---- 대화내 검색 ----
+let searchState = {q:"",hits:[],idx:-1};
+function openSearch(){ closeAllPanels(); $("searchBar").classList.add("open"); setTimeout(()=>$("searchInput").focus(),0); }
+function closeSearch(){ $("searchBar").classList.remove("open"); $("searchInput").value=""; searchState={q:"",hits:[],idx:-1}; $("searchCount").textContent=""; }
+function doSearch(q){
+  searchState.q = q.trim().toLowerCase(); searchState.hits = []; searchState.idx = -1;
+  if(!searchState.q){ $("searchCount").textContent=""; return; }
+  const c = activeConv();
+  (c?.messages||[]).forEach((m,i)=>{ if((m.content||"").toLowerCase().includes(searchState.q)) searchState.hits.push(i); });
+  if(searchState.hits.length){ navSearch(0); } else { $("searchCount").textContent = "없음"; }
+}
+function navSearch(dir){
+  if(!searchState.hits.length) return;
+  if(dir===0){ searchState.idx = 0; }                                   // 첫 히트로 점프
+  else { searchState.idx = (searchState.idx + dir + searchState.hits.length) % searchState.hits.length; }
+  const msgIdx = searchState.hits[searchState.idx];
+  ensureRenderedUpTo(msgIdx);
+  const wrap = msgs.querySelector(`.msg-wrapper[data-midx="${msgIdx}"]`);
+  if(wrap){ wrap.scrollIntoView({behavior:"smooth",block:"center"}); pulse(wrap); }
+  $("searchCount").textContent = `${searchState.idx+1}/${searchState.hits.length}`;
+}
+function ensureRenderedUpTo(msgIdx){
+  // renderHistory는 마지막 renderedCount개를 그리므로 msgIdx를 포함하려면 이만큼 필요
+  const needed = history.length - msgIdx + 1;
+  if(needed > renderedCount){ renderedCount = needed; renderHistory(); }
+}
+
+// ---- 드래그&드롭 ----
+let dragDepth = 0;
+function guessLang(name){ const m=String(name).match(/\.(\w+)$/); return m?m[1].toLowerCase():"text"; }
+const TEXT_EXT = /\.(txt|md|markdown|py|js|mjs|ts|tsx|jsx|json|csv|tsv|log|java|c|cc|cpp|h|hpp|cs|go|rs|rb|php|swift|kt|sh|bash|zsh|yml|yaml|toml|ini|xml|html|htm|css|scss|sql|r)$/i;
+async function handleDroppedFiles(files){
+  for(const f of files){
+    const kind = mediaKind(f);
+    if(kind === "pdf" || kind === "excel"){
+      pendingMedia.push({name:f.name||kind, kind, file:f});
+      continue;
+    }
+    if(f.type.startsWith("text/") || TEXT_EXT.test(f.name)){
+      try{ const text = await f.text();
+        input.value += (input.value?"\n\n":"") + "```"+guessLang(f.name)+"\n"+text+"\n```";
+        autoGrow(); updateCharCount(); toastMsg(`📎 ${f.name} 내용 삽입`);
+      }catch(e){ toastMsg(`파일 읽기 실패: ${f.name}`); }
+    } else { toastMsg(`지원하지 않는 파일: ${f.name} (PDF/엑셀·텍스트 파일만 가능)`); }
+  }
+  renderAttachRow(); input.focus();
+}
+
+// ---- 단축키 도움말 ----
+const SHORTCUTS = [
+  {keys:["Ctrl","K"], desc:"대화내 검색"}, {keys:["Ctrl","N"], desc:"새 대화"}, {keys:["Ctrl","B"], desc:"질문 뱅크"},
+  {keys:["Ctrl","/"], desc:"단축키 도움말"}, {keys:["Ctrl","Enter"], desc:"전송"},
+  {keys:["Shift","Enter"], desc:"줄바꿈 (입력창)"}, {keys:["Esc"], desc:"생성 중단 / 패널 닫기"},
+];
+function renderShortcuts(){ $("shortcutBody").innerHTML = SHORTCUTS.map(s=>`<div class="shortcut-row"><span>${s.desc}</span><span class="keys">${s.keys.map(k=>`<span class="kbd">${k}</span>`).join("")}</span></div>`).join(""); }
+
+// ---- 마크다운 내보내기 ----
+function conversationToMarkdown(c){
+  const info = getModelInfo(c.model);
+  let md = `# ${c.title||"대화"}\n\n> 모델: ${info.name} · ${new Date(c.updatedAt||Date.now()).toLocaleString("ko-KR")}\n\n---\n\n`;
+  for(const m of c.messages){
+    if(m.role==="user") md += `## 🧑 사용자\n\n${m.content||""}\n\n`;
+    else { const mi=getModelInfo(m.model); md += `## ${mi.avatar} ${mi.name}\n\n${m.content||""}\n\n`; if(m.metrics) md += `> ⚡ ${m.metrics.toks_per_s||"-"} tok/s · ⏱ ${((m.metrics.elapsed_ms||0)/1000).toFixed(1)}s · ¶ ${m.metrics.para||"-"}문단\n\n`; }
+  }
+  return md;
+}
+
+// ---- HTML 내보내기 (스타일 포함 단일 문서) ----
+function conversationToHTML(c){
+  const esc = escapeHtml;
+  const md = t => { try { return window.marked ? marked.parse(t||"") : esc(t||""); } catch(e){ return esc(t||""); } };
+  const fmt = ts => new Date(ts||Date.now()).toLocaleString("ko-KR",{year:"numeric",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit"});
+  const info = getModelInfo(c.model);
+  const parts = c.messages.map((m, i)=>{
+    const user = m.role === "user";
+    const mi = user ? {name:"질문", avatar:"🧑"} : getModelInfo(m.model || c.model);
+    const body = md(m.content||"");
+    const metrics = (!user && m.metrics)
+      ? `<div class="meta">⚡ ${m.metrics.toks_per_s||"-"} tok/s · ⏱ ${((m.metrics.elapsed_ms||0)/1000).toFixed(1)}초</div>` : "";
+    return `<section class="msg ${user?"user":"bot"}" id="msg-${i}">
+  <div class="who"><span class="num">#${i+1}</span> ${user?"🧑":mi.avatar} ${esc(user?"질문":mi.name)}</div>
+  <div class="body">${body}</div>
+  ${metrics}
+</section>`;
+  }).join("\n");
+  const speeds = c.messages.filter(m=>m && m.metrics && m.metrics.toks_per_s).map(m=>m.metrics.toks_per_s);
+  const avgSpeed = speeds.length ? (speeds.reduce((a,b)=>a+b,0)/speeds.length).toFixed(1) : null;
+  const userItems = c.messages.map((m,i)=>({m,i})).filter(x=>x.m.role==="user");
+  const toc = userItems.length >= 4
+    ? `<nav class="toc"><b>📑 목차</b><ol>${userItems.map(x=>`<li><a href="#msg-${x.i}">${esc((x.m.content||"").replace(/\s+/g," ").slice(0,48))}</a></li>`).join("")}</ol></nav>`
+    : "";
+  return `<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(c.title||"대화")} — 대화 내보내기</title>
+<style>
+  :root { --fg:#1f2430; --muted:#6b7280; --bg:#f7f8fa; --card:#fff; --border:#e5e7eb; --accent:#3b6eff; --user-bg:#eef2ff; --code-bg:#0f172a; --code-fg:#e2e8f0; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:48px 20px; background:var(--bg); color:var(--fg);
+         font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+         line-height:1.75; word-break:keep-all; overflow-wrap:break-word; }
+  .wrap { max-width: 820px; margin: 0 auto; }
+  header.doc { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:28px 32px; margin-bottom:28px; }
+  header.doc h1 { margin:0 0 10px; font-size:24px; }
+  header.doc .sub { color:var(--muted); font-size:14px; }
+  header.doc .tags { margin-top:14px; display:flex; flex-wrap:wrap; gap:8px; }
+  header.doc .tag { background:var(--bg); border:1px solid var(--border); border-radius:999px; padding:4px 12px; font-size:12.5px; color:var(--muted); }
+  .msg { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:20px 26px; margin:16px 0; }
+  .msg.user { background:var(--user-bg); border-color:#dfe4ff; }
+  .msg .who { font-size:12.5px; font-weight:700; color:var(--muted); letter-spacing:.02em; margin-bottom:8px; }
+  .msg .num { color:var(--accent); opacity:.65; margin-right:6px; }
+  .toc { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px 26px; margin:16px 0; }
+  .toc ol { margin:10px 0 2px; padding-left:22px; } .toc li { margin:5px 0; font-size:13.5px; }
+  .toc a { color:var(--accent); text-decoration:none; } .toc a:hover { text-decoration:underline; }
+  .print-bar { position:fixed; top:14px; right:16px; display:flex; gap:8px; z-index:50; }
+  .print-bar button { background:var(--accent); color:#fff; border:none; border-radius:10px; padding:10px 16px; font-size:13.5px; font-weight:600; cursor:pointer; box-shadow:0 4px 14px rgba(59,110,255,.35); }
+  .print-bar button:hover { filter:brightness(1.08); }
+  .msg .meta { margin-top:12px; font-size:12px; color:var(--muted); }
+  .body > :first-child { margin-top:0; } .body > :last-child { margin-bottom:0; }
+  .body h1,.body h2,.body h3,.body h4 { margin:1.4em 0 .5em; line-height:1.4; }
+  .body h1 { font-size:1.35em; } .body h2 { font-size:1.18em; } .body h3 { font-size:1.06em; }
+  .body p { margin:0 0 12px; }
+  .body a { color:var(--accent); text-underline-offset:2px; }
+  .body code { background:#eef1f6; padding:2px 6px; border-radius:6px; font-size:.92em;
+               font-family:ui-monospace,"Cascadia Code",Consolas,monospace; }
+  .body pre { background:var(--code-bg); color:var(--code-fg); padding:16px 18px; border-radius:12px; overflow-x:auto; }
+  .body pre code { background:none; padding:0; color:inherit; font-size:13.5px; line-height:1.65; }
+  .body ul,.body ol { margin:10px 0; padding-left:24px; } .body li { margin:5px 0; }
+  .body blockquote { margin:14px 0; padding:10px 18px; border-left:4px solid var(--accent); background:#f3f6ff; border-radius:0 10px 10px 0; color:#444; }
+  .body table { border-collapse:collapse; width:100%; margin:14px 0; font-size:14px; }
+  .body th,.body td { border:1px solid var(--border); padding:9px 13px; text-align:left; }
+  .body th { background:var(--bg); } .body tr:nth-child(even) td { background:#fafbfc; }
+  .body hr { border:none; border-top:1px solid var(--border); margin:18px 0; }
+  footer.doc { color:var(--muted); font-size:12.5px; text-align:center; margin:36px 0 8px; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg:#e6e9f0; --muted:#9aa3b2; --bg:#12151d; --card:#1a1f2b; --border:#2b3345; --user-bg:#202840; --code-bg:#0d1220; }
+    .body code { background:#252c3d; } .body blockquote { background:#1d2436; color:#c9d2e3; }
+    .body tr:nth-child(even) td { background:#1c2230; } .print-bar button { box-shadow:none; }
+  }
+  @page { margin: 16mm 14mm; }
+  @media print {
+    :root { --fg:#111; --muted:#555; --bg:#fff; --card:#fff; --border:#ddd; --user-bg:#f5f7ff; --code-bg:#f6f8fa; --code-fg:#111; }
+    body { background:#fff; padding:0; color:#111; }
+    .no-print { display:none !important; }
+    .msg, header.doc, .toc { border-color:#ddd; break-inside:avoid; box-shadow:none; }
+    .body a::after { content:" (" attr(href) ")"; font-size:.82em; color:#666; word-break:break-all; }
+    .body pre { white-space:pre-wrap; }
+    .toc { break-after:page; }
+  }
+</style>
+</head>
+<body>
+<div class="print-bar no-print"><button onclick="window.print()">🖨 인쇄 / PDF 저장</button></div>
+<div class="wrap">
+<header class="doc">
+  <h1>${esc(c.title||"대화")}</h1>
+  <div class="sub">모델 ${esc(info.name)} · ${fmt(c.createdAt)} 시작 · ${fmt(c.updatedAt)} 마지막 수정</div>
+  <div class="tags"><span class="tag">메시지 ${c.messages.length}개</span>${avgSpeed?`<span class="tag">평균 ${avgSpeed} tok/s</span>`:""}<span class="tag">내보내기 ${fmt(Date.now())}</span></div>
+</header>
+${toc}
+${parts}
+<footer class="doc">이 문서는 로컬 채팅 앱에서 HTML로 내보낸 대화 기록입니다.</footer>
+</div>
+</body>
+</html>`;
+}
+
+// ---- 인쇄 / PDF (미리보기 창에서 바로 인쇄) ----
+function printConversation(c){
+  const w = window.open("", "_blank");
+  if(!w){ toastMsg("팝업이 차단되어 인쇄 미리보기를 열 수 없어요"); return; }
+  w.document.write(conversationToHTML(c));
+  w.document.close();
+  setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 450);
+}
+
+// ---- 백업 가져오기 (JSON: 전체 대화 / 메시지 목록 모두 지원) ----
+function pickImportFile(){
+  const inp = document.createElement("input");
+  inp.type = "file"; inp.accept = ".json,application/json";
+  inp.onchange = ()=>{ if(inp.files && inp.files[0]) importConversations(inp.files[0]); };
+  inp.click();
+}
+function importConversations(file){
+  file.text().then(txt=>{
+    const data = JSON.parse(txt);
+    let convs = [];
+    if(Array.isArray(data)){
+      if(data.length && data.every(m=>m && typeof m==="object" && "role" in m && "content" in m)){
+        convs = [{ id:uid(), title:titleFromMessages(data), model:currentModelKey, messages:data,
+                   createdAt:Date.now(), updatedAt:Date.now() }];
+      } else {
+        convs = data.filter(c=>c && typeof c==="object" && Array.isArray(c.messages));
+      }
+    } else if(data && Array.isArray(data.conversations)){
+      convs = data.conversations.filter(c=>c && Array.isArray(c.messages));
+    }
+    if(!convs.length){ toastMsg("가져올 대화가 없어요"); return; }
+    let added = 0, updated = 0;
+    for(const c of convs){
+      if(!c.id) c.id = uid();
+      if(!c.model) c.model = currentModelKey;
+      ensureMsgIds(c);
+      const i = store.conversations.findIndex(x=>x.id===c.id);
+      if(i>=0){ store.conversations[i] = c; updated++; }
+      else { store.conversations.unshift(c); added++; }
+    }
+    if(!activeConv()) store.activeId = store.conversations[0].id;
+    saveStore(); syncHistoryRef(); renderedCount = INIT_RENDER_WINDOW; renderAll();
+    toastMsg(`📤 가져오기 완료: ${added}개 추가 · ${updated}개 갱신`);
+  }).catch(e=>toastMsg("가져오기 실패: "+(e&&e.message||e)));
+}
+
+// ---- 대화 분기(fork) ----
+function forkConversation(msgId){
+  if(sending){ toastMsg("응답 생성 중에는 분기할 수 없어요"); return; }
+  const c = activeConv(); if(!c) return;
+  const idx = c.messages.findIndex(m=>m.id===msgId); if(idx<0) return;
+  const cut = c.messages[idx].role==="user" ? idx+1 : idx;
+  const prefix = c.messages.slice(0, cut).map(m=>({...m, id:uid(), fav:false}));
+  const nc = { id:uid(), title:(c.title||"대화")+" (분기)", model:c.model, messages:prefix, createdAt:Date.now(), updatedAt:Date.now() };
+  if(nc.title.length>26) nc.title = nc.title.slice(0,26);
+  store.conversations.unshift(nc); store.activeId = nc.id;
+  saveStore(); syncHistoryRef(); renderedCount = INIT_RENDER_WINDOW;
+  renderAll(); closeSidebar(); toastMsg("🌿 새 대화로 분기했습니다");
+}
+
+// ---- 대화 고정 ----
+function togglePinConv(id){ const c=store.conversations.find(x=>x.id===id); if(!c) return; c.pinned=!c.pinned; saveStore(); renderConvList(); }
+
+// ---- 재생성 ----
+async function regenerate(msgId){
+  if(sending) return;
+  const c = activeConv(); if(!c) return;
+  const idx = c.messages.findIndex(m=>m.id===msgId);
+  if(idx>=0 && c.messages[idx].role==="assistant"){ c.messages.splice(idx,1); saveStore(); }
+  const wrap = msgs.querySelector(`.msg-wrapper[data-msgid="${msgId}"]`); if(wrap) wrap.remove();
+  await runAssistant();
+}
+
+// ---- 사용자 메시지 호버 액션바 (분기) ----
+function attachUserActions(wrap, msgId){
+  if(!wrap || wrap.querySelector(".msg-actions")) return;
+  const bar = document.createElement("div"); bar.className="msg-actions";
+  const fork = document.createElement("button"); fork.className="msg-action-btn"; fork.type="button"; fork.title="이 지점에서 새 대화로 분기"; fork.textContent="🌿 분기";
+  fork.onclick=(e)=>{ e.stopPropagation(); forkConversation(msgId); };
+  bar.appendChild(fork);
+  wrap.querySelector(".msg.user")?.appendChild(bar);
+}
+
+// ---- 질문 뱅크 (웹 UI — 클릭만으로 질문) ----
+let QCACHE = null;
+let QSEL = new Set();   // 다중 선택된 문항 id
+const BATCH = { running:false, abort:null };
+// ---- 사용자 지정 질문 (localStorage 저장) ----
+const QBANK_CUSTOM_KEY = "qbank.custom.v1";
+let QCUSTOM = [];
+function loadCustomQ(){
+  try{ QCUSTOM = JSON.parse(localStorage.getItem(QBANK_CUSTOM_KEY) || "[]") || []; }
+  catch(e){ QCUSTOM = []; }
+}
+function saveCustomQ(){ try{ localStorage.setItem(QBANK_CUSTOM_KEY, JSON.stringify(QCUSTOM)); }catch(e){} }
+function qbankAll(){ return [...(QCACHE||[]), ...(QCUSTOM||[])]; }
+
+async function loadQuestionBank(){
+  loadCustomQ();
+  if(QCACHE) return QCACHE;
+  try{
+    const r = await fetch("/api/questions");
+    const d = await r.json();
+    QCACHE = Array.isArray(d.questions) ? d.questions : [];
+    // 문항 번호 순서 보장 (Q1 < Q2 < … < Q10 < …)
+    QCACHE.sort((a,b)=>parseInt(String(a.id).slice(1),10)-parseInt(String(b.id).slice(1),10));
+  }catch(e){ QCACHE = []; toastMsg("질문 뱅크를 불러오지 못했어요"); }
+  return QCACHE;
+}
+function openQbank(){ $("qbankModal").classList.add("open"); }
+function closeQbank(){ $("qbankModal").classList.remove("open"); }
+function qbankTab(name){
+  document.querySelectorAll(".qbank-tabs button").forEach(b=>b.classList.toggle("active", b.dataset.tab===name));
+  $("qbankListTab").hidden = name!=="list";
+  $("qbankStatsTab").hidden = name!=="stats";
+  $("qbankRunTab").hidden = name!=="run";
+  if(name==="stats") renderQbankStats();
+}
+function renderQbankCats(qs){
+  const wrap = $("qbankCats");
+  const cats = ["", ...Array.from(new Set(qs.map(q=>q.category).filter(Boolean)))];
+  wrap.innerHTML = "";
+  cats.forEach((c,i)=>{
+    const b = document.createElement("button");
+    b.className = "qbank-cat" + (i===0 ? " active" : "");
+    b.textContent = c || "전체";
+    b.dataset.cat = c;
+    b.addEventListener("click", ()=>{
+      wrap.querySelectorAll(".qbank-cat").forEach(x=>x.classList.remove("active"));
+      b.classList.add("active");
+      renderQbankList();
+    });
+    wrap.appendChild(b);
+  });
+}
+function renderQbankStars(qs){
+  const wrap = $("qbankStars");
+  const stars = ["", ...Array.from(new Set(qs.map(q=>q.stars).filter(Boolean)))];
+  wrap.innerHTML = "";
+  stars.forEach((s,i)=>{
+    const b = document.createElement("button");
+    b.className = "qbank-cat" + (i===0 ? " active" : "");
+    b.textContent = s || "전체";
+    b.dataset.star = s;
+    b.addEventListener("click", ()=>{
+      wrap.querySelectorAll(".qbank-cat").forEach(x=>x.classList.remove("active"));
+      b.classList.add("active");
+      renderQbankList();
+    });
+    wrap.appendChild(b);
+  });
+}
+function qbankSortList(list, mode){
+  const num = x => { const n = parseInt(String(x.id).slice(1), 10); return isNaN(n) ? 1e9 : n; };
+  const starScore = x => (String(x.stars||"").match(/★/g)||[]).length - (String(x.stars||"").match(/☆/g)||[]).length * 0.5;
+  const arr = list.slice();
+  if(mode === "stars") arr.sort((a,b)=> (starScore(b)-starScore(a)) || (num(a)-num(b)));
+  else if(mode === "title") arr.sort((a,b)=> String(a.title||"").localeCompare(String(b.title||""), "ko"));
+  else arr.sort((a,b)=> (num(a)-num(b)) || String(a.id).localeCompare(String(b.id)));
+  return arr;
+}
+
+function openCustomForm(){
+  const f = $("qbankCustomForm"); if(!f) return;
+  f.hidden = false;
+  $("qbankCustomTitle").focus();
+}
+function closeCustomForm(){
+  const f = $("qbankCustomForm"); if(!f) return;
+  f.hidden = true;
+  ["qbankCustomTitle","qbankCustomQ","qbankCustomA"].forEach(id=>{ const el = $(id); if(el) el.value = ""; });
+}
+function saveCustomQuestion(){
+  const title = ($("qbankCustomTitle").value||"").trim();
+  const question = ($("qbankCustomQ").value||"").trim();
+  const answer = ($("qbankCustomA").value||"").trim();
+  if(!question){ toastMsg("질문 내용을 입력하세요"); return; }
+  const nums = QCUSTOM.map(x=>parseInt(String(x.id).slice(1),10)).filter(n=>!isNaN(n));
+  const id = "C" + ((nums.length ? Math.max(...nums) : 0) + 1);
+  QCUSTOM.push({ id, title: title || `내 질문 ${id}`, question, answer, category: "⭐ 내 질문", stars: "", custom: true });
+  saveCustomQ(); closeCustomForm();
+  renderQbankCats(qbankAll()); renderQbankStars(qbankAll()); renderQbankList();
+  toastMsg(`${id} 질문을 추가했어요`);
+}
+function renderQbankList(){
+  const q = ($("qbankSearch").value||"").trim().toLowerCase();
+  const activeCat = $("qbankCats").querySelector(".qbank-cat.active");
+  const cat = activeCat ? activeCat.dataset.cat : "";
+  const activeStar = $("qbankStars").querySelector(".qbank-cat.active");
+  const star = activeStar ? activeStar.dataset.star : "";
+  const sortMode = ($("qbankSort")||{}).value || "id";
+  const all = qbankAll();
+  const list = qbankSortList(all.filter(x=>
+    (!cat || x.category===cat) &&
+    (!star || x.stars===star) &&
+    (!q || (x.question||"").toLowerCase().includes(q) || (x.title||"").toLowerCase().includes(q))), sortMode);
+  const cnt = $("qbankCount");
+  if(cnt) cnt.textContent = `${list.length}/${all.length} 문항`;
+  const box = $("qbankList");
+  box.innerHTML = "";
+  if(!list.length){ box.innerHTML = '<div class="qbank-empty">조건에 맞는 질문이 없어요.</div>'; return; }
+  list.forEach(x=>{
+    const item = document.createElement("div"); item.className = "q-item";
+    item.innerHTML = `
+      <div class="q-head">
+        <label class="q-check"><input type="checkbox" data-a="select" ${QSEL.has(x.id)?"checked":""} aria-label="${escapeHtml(x.id)} 선택"></label>
+        <span class="q-id">${escapeHtml(x.id)}</span>
+        <span class="q-title">${escapeHtml(x.title)}</span>
+        <span class="q-stars">${escapeHtml(x.stars||"")}</span>
+      </div>
+      <div class="q-cat">${escapeHtml(x.category||"")}</div>
+      <div class="q-text">${escapeHtml(x.question||"")}</div>
+      <div class="q-acts">
+        <button class="ghost small" data-a="ask">💬 질문하기</button>
+        <button class="ghost small" data-a="paste">✏️ 입력창에 넣기</button>
+        <button class="ghost small" data-a="answer">💡 정답 요지</button>
+        ${x.custom ? '<button class="ghost small" data-a="del">🗑 삭제</button>' : ''}
+      </div>
+      <div class="q-ans" hidden>${escapeHtml(x.answer||"")}</div>`;
+    item.querySelector(".q-head").addEventListener("click", e=>{ if(!e.target.closest(".q-check")) item.classList.toggle("open"); });  // 질문 본문은 항상 표시(.open 토글은 향후 확장용)
+    item.querySelector('[data-a="select"]').addEventListener("change", e=>{
+      if(e.target.checked) QSEL.add(x.id); else QSEL.delete(x.id);
+      updateQselCount();
+    });
+    item.querySelector('[data-a="ask"]').addEventListener("click", ()=>{ closeQbank(); submitUser(x.question); });
+    item.querySelector('[data-a="paste"]').addEventListener("click", ()=>{
+      input.value = x.question; autoGrow(); updateCharCount(); closeQbank(); input.focus();
+    });
+    item.querySelector('[data-a="answer"]').addEventListener("click", e=>{
+      const ans = item.querySelector(".q-ans");
+      ans.hidden = !ans.hidden;
+      e.currentTarget.textContent = ans.hidden ? "💡 정답 요지" : "💡 정답 닫기";
+    });
+    if(x.custom){
+      item.querySelector('[data-a="del"]').addEventListener("click", ()=>{
+        QCUSTOM = QCUSTOM.filter(y=>y.id!==x.id);
+        QSEL.delete(x.id);
+        saveCustomQ(); updateQselCount();
+        renderQbankCats(qbankAll()); renderQbankStars(qbankAll()); renderQbankList();
+        toastMsg(`${x.id} 질문을 삭제했어요`);
+      });
+    }
+    box.appendChild(item);
+  });
+}
+function updateQselCount(){
+  const b = $("qbankRunBtn");
+  if(b) b.textContent = `▶ 선택 실행 (${QSEL.size})`;
+}
+function qbankRandom(){
+  const items = qbankAll();
+  if(!items.length){ toastMsg("아직 불러온 질문이 없어요"); return; }
+  const x = items[Math.floor(Math.random()*items.length)];
+  closeQbank(); submitUser(x.question);
+}
+
+// ---- 질문 뱅크 결과 비교 (실행 이력 집계 차트) ----
+async function renderQbankStats(){
+  const box = $("qbankStats");
+  box.innerHTML = '<div class="qbank-empty">실행 이력을 불러오는 중…</div>';
+  let sets = [];
+  try{ sets = (await (await fetch("/api/results")).json()).sets || []; }catch(e){}
+  if(!sets.length){
+    box.innerHTML = '<div class="qbank-empty">아직 실행 이력이 없어요.<br>run_questions.bat 로 질문 뱅크를 실행하면 이곳에 자동으로 모입니다.</div>';
+    return;
+  }
+  const agg = {};
+  let total = 0, okAll = 0;
+  for(const s of sets) for(const r of (s.results||[])){
+    total++;
+    const a = agg[r.id] = agg[r.id] || {OFF:{ok:0,n:0,toks:[]}, ON:{ok:0,n:0,toks:[]}};
+    const m = a[r.mode==="ON" ? "ON" : "OFF"];
+    if(!m) continue;
+    m.n++;
+    if(r.auto==="✓"){ m.ok++; okAll++; }
+    if(r.toks_per_s) m.toks.push(r.toks_per_s);
+  }
+  const avg = xs => xs.length ? xs.reduce((p,c)=>p+c,0)/xs.length : null;
+  const bar = (v, max, cls) => `<div class="q-bar"><div class="q-bar-fill ${cls}" style="width:${max ? Math.max(3, Math.round(v/max*100)) : 0}%"></div></div>`;
+  const pct = m => m.n ? Math.round(m.ok/m.n*100) : null;
+  const fmt = (v, s) => v==null ? "-" : (Math.round(v*10)/10) + (s||"");
+
+  let html = `<div class="qbank-cards">
+    <div class="qbank-stat"><div class="qbank-stat-n">${sets.length}</div><div class="qbank-stat-l">실행 세트</div></div>
+    <div class="qbank-stat"><div class="qbank-stat-n">${total}</div><div class="qbank-stat-l">총 문항 실행</div></div>
+    <div class="qbank-stat"><div class="qbank-stat-n">${total ? Math.round(okAll/total*100) : 0}%</div><div class="qbank-stat-l">전체 자동 정답률</div></div>
+  </div>`;
+  // 📈 자동 정답률 추이 (라인 차트 — 세트 간 변화)
+  const trendIds = ["ALL", ...Object.keys(agg).sort((a,b)=>parseInt(a.slice(1))-parseInt(b.slice(1)))];
+  html += `<div class="q-sec">📈 자동 정답률 추이 (실행 세트 순 · 문항 선택)</div>
+    <div class="qbank-tools">
+      <select id="trendQ" class="q-sel" aria-label="추이 차트 문항 선택">${trendIds.map(id=>`<option value="${escapeHtml(id)}">${id==="ALL" ? "전체 문항" : escapeHtml(id)}</option>`).join("")}</select>
+      <span class="flat"><span class="q-legend off"></span> OFF · <span class="q-legend on"></span> ON</span>
+    </div>
+    <div id="qTrend"></div>`;
+  const ids = Object.keys(agg).sort((a,b)=>parseInt(a.slice(1))-parseInt(b.slice(1)));
+  html += '<div class="q-sec">⚔️ 문항별 자동 정답률 (누적 · OFF vs ON)</div><div class="q-chart">';
+  for(const id of ids){
+    const a = agg[id], o = pct(a.OFF), n = pct(a.ON);
+    html += `<div class="q-row"><span class="q-row-l">${escapeHtml(id)}</span>
+      <span class="q-row-b">${bar(o||0, 100, "off")}</span><span class="q-row-v">OFF ${o==null?"-":o+"%"}</span>
+      <span class="q-row-b">${bar(n||0, 100, "on")}</span><span class="q-row-v">ON ${n==null?"-":n+"%"}</span></div>`;
+  }
+  html += '</div><div class="q-sec">⚡ 문항별 평균 생성 속도 (tok/s)</div><div class="q-chart">';
+  const maxToks = Math.max(1, ...ids.map(id=>Math.max(avg(agg[id].OFF.toks)||0, avg(agg[id].ON.toks)||0)));
+  for(const id of ids){
+    const a = agg[id], o = avg(a.OFF.toks), n = avg(a.ON.toks);
+    html += `<div class="q-row"><span class="q-row-l">${escapeHtml(id)}</span>
+      <span class="q-row-b">${bar(o||0, maxToks, "off")}</span><span class="q-row-v">OFF ${fmt(o)}</span>
+      <span class="q-row-b">${bar(n||0, maxToks, "on")}</span><span class="q-row-v">ON ${fmt(n)}</span></div>`;
+  }
+  html += '</div><div class="q-sec">📁 최근 실행 세트</div><table class="q-table"><thead><tr><th>실행 시각</th><th>모드</th><th>항목</th><th>자동 정답</th><th>평균 tok/s</th></tr></thead><tbody>';
+  for(const s of sets.slice(0, 10)){
+    const rs = s.results||[];
+    const ok = rs.filter(r=>r.auto==="✓").length;
+    const withAuto = rs.filter(r=>r.auto).length;
+    const toks = rs.map(r=>r.toks_per_s).filter(Boolean);
+    html += `<tr><td>${escapeHtml(String(s.file).replace("answers_","").replace(".json",""))}</td>
+      <td>${escapeHtml((s.meta&&s.meta.modes_text)||"-")}</td><td>${rs.length}</td>
+      <td>${withAuto ? ok+"/"+withAuto : "-"}</td><td>${fmt(avg(toks))}</td></tr>`;
+  }
+  html += '</tbody></table>';
+  html = `<div class="q-sec">🔄 세트 간 비교 (기준 → 대상)</div>
+    <div class="qbank-tools"><select id="deltaA" class="q-sel" aria-label="비교 기준 세트"></select><span class="flat">→</span><select id="deltaB" class="q-sel" aria-label="비교 대상 세트"></select></div>
+    <div id="qbankDelta"></div>` + html;
+  box.innerHTML = html;
+  // 📈 추이 라인 차트 렌더러 (세트 간 자동 정답률 변화)
+  const renderTrend = ()=>{
+    const out = $("qTrend"); if(!out) return;
+    const qid = ($("trendQ")||{}).value || "ALL";
+    const order = sets.slice().reverse();  // 오래된 → 최신
+    if(!order.length){ out.innerHTML = '<div class="qbank-empty">추이를 표시할 실행 세트가 없어요.</div>'; return; }
+    const W = 720, H = 250, L = 46, R = 14, T = 14, B = 42;
+    const iw = W - L - R, ih = H - T - B;
+    const x = i => order.length <= 1 ? L + iw/2 : L + iw * i / (order.length - 1);
+    const y = v => T + ih * (1 - v / 100);
+    const stamp = name => {
+      const m = String(name).match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/);
+      return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : String(name);
+    };
+    const rate = (s, mode)=>{
+      const rs = (s.results||[]).filter(z=>z.auto && z.mode===mode && (qid==="ALL" || z.id===qid));
+      return rs.length ? { v: rs.filter(z=>z.auto==="✓").length / rs.length * 100, n: rs.length } : null;
+    };
+    let svg = `<svg viewBox="0 0 ${W} ${H}" class="q-trend" role="img" aria-label="자동 정답률 추이 차트">`;
+    [0,25,50,75,100].forEach(g=>{
+      svg += `<line x1="${L}" y1="${y(g)}" x2="${W-R}" y2="${y(g)}" class="q-grid"/>`;
+      svg += `<text x="${L-8}" y="${y(g)+4}" class="q-ax" text-anchor="end">${g}%</text>`;
+    });
+    const labelStep = Math.max(1, Math.ceil(order.length / 8));
+    order.forEach((s,i)=>{
+      if(i % labelStep !== 0 && i !== order.length - 1) return;
+      svg += `<text x="${x(i)}" y="${H-14}" class="q-ax" text-anchor="middle">${escapeHtml(stamp(String(s.file).replace("answers_","").replace(".json","")))}</text>`;
+    });
+    const draw = (mode, cls)=>{
+      const pts = order.map((s,i)=>({ i, p: rate(s, mode) }));
+      const segs = []; let cur = [];
+      pts.forEach(pt=>{ if(pt.p) cur.push(pt); else { if(cur.length) segs.push(cur); cur = []; } });
+      if(cur.length) segs.push(cur);
+      segs.forEach(seg=>{
+        if(seg.length > 1) svg += `<polyline class="q-line ${cls}" points="${seg.map(pt=>`${x(pt.i)},${y(pt.p.v)}`).join(" ")}"/>`;
+      });
+      pts.forEach(pt=>{
+        if(!pt.p) return;
+        const s = order[pt.i];
+        const label = stamp(String(s.file).replace("answers_","").replace(".json",""));
+        svg += `<circle cx="${x(pt.i)}" cy="${y(pt.p.v)}" r="4.5" class="q-dot ${cls}"><title>${mode} · ${escapeHtml(label)} · 정답률 ${Math.round(pt.p.v)}% (${pt.p.n}문항 실행)</title></circle>`;
+      });
+    };
+    draw("OFF", "off");
+    draw("ON", "on");
+    svg += "</svg>";
+    out.innerHTML = svg;
+  };
+  // 세트 간 델타 비교 배선
+  const opt = s => `<option value="${escapeHtml(s.file)}">${escapeHtml(String(s.file).replace("answers_","").replace(".json",""))} · ${escapeHtml((s.meta&&s.meta.modes_text)||"-")}</option>`;
+  const selA = $("deltaA"), selB = $("deltaB");
+  selA.innerHTML = sets.slice().reverse().map(opt).join("");
+  selB.innerHTML = sets.map(opt).join("");
+  selA.value = sets.length > 1 ? sets[1].file : sets[0].file;
+  selB.value = sets[0].file;
+  const renderDelta = ()=>{
+    const a = sets.find(s=>s.file===selA.value), b = sets.find(s=>s.file===selB.value);
+    $("qbankDelta").innerHTML = deltaTable(a, b);
+  };
+  selA.addEventListener("change", renderDelta);
+  selB.addEventListener("change", renderDelta);
+  renderDelta();
+  // 추이 차트 배선
+  const trendSel = $("trendQ");
+  if(trendSel){ trendSel.addEventListener("change", renderTrend); renderTrend(); }
+}
+
+// ---- 질문 뱅크 다중 선택 순차 실행 ----
+function autoBadge(auto){
+  if(auto==="✓") return '<span class="q-pill ok">✓ 정답</span>';
+  if(auto==="✗") return '<span class="q-pill bad">✗ 오답</span>';
+  return '<span class="q-pill na">자동확인 없음</span>';
+}
+function autoCheckQ(x, text){
+  const pats = x.check || [];
+  if(!pats.length || !text) return "";
+  try{ return pats.every(p=>new RegExp(p, "i").test(text)) ? "✓" : "✗"; }catch(e){ return ""; }
+}
+async function askModelOnce(question, signal){
+  const resp = await fetch("/api/chat", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({
+      model: currentModelKey,
+      messages: [{role:"user", content: question}],
+      temperature: parseFloat($("temp").value),
+      max_tokens: store.settings.maxTokens,
+      thinking: !!store.settings.thinking,
+      // 질문 뱅크 실행은 항상 한국어 답변을 받는다 (자동 확인 키워드가 한글 기준)
+      system: ["이 질문에 대해 반드시 한국어(한글)로만 답변하세요. 수식·코드·고유명사를 제외한 모든 설명과 결론은 한국어로 작성합니다.", store.settings.persona||""].filter(Boolean).join("\n"),
+    }),
+    signal,
+  });
+  if(!resp.ok || !resp.body) return { text:"", metrics:null, error:"연결 실패 "+resp.status };
+  const reader = resp.body.getReader(), dec = new TextDecoder();
+  let buf = "", text = "", metrics = null, error = null;
+  while(true){
+    const {done, value} = await reader.read();
+    if(done) break;
+    buf += dec.decode(value, {stream:true});
+    let i;
+    while((i = buf.indexOf("\n\n")) >= 0){
+      const raw = buf.slice(0, i); buf = buf.slice(i+2);
+      for(const line of raw.split("\n")){
+        if(!line.startsWith("data: ")) continue;
+        let obj; try{ obj = JSON.parse(line.slice(6)); }catch(e){ continue; }
+        if(obj.token) text += obj.token;
+        else if(obj.done && obj.metrics) metrics = obj.metrics;
+        else if(obj.error) error = obj.error;
+      }
+    }
+  }
+  return { text, metrics, error };
+}
+async function runSelectedQuestions(){
+  const items = qbankAll().filter(x=>QSEL.has(x.id));
+  if(!items.length){ toastMsg("먼저 실행할 문항을 선택하세요 (체크박스)"); return; }
+  if(BATCH.running){ toastMsg("이미 실행 중이에요"); return; }
+  BATCH.running = true; BATCH.abort = new AbortController();
+  $("qbankRunTabBtn").hidden = false;
+  qbankTab("run");
+  const box = $("qbankRun");
+  box.innerHTML = '<div class="q-run-head" id="qbankRunHead"></div>';
+  const head = $("qbankRunHead");
+  const stopBtn = document.createElement("button");
+  stopBtn.className = "ghost small"; stopBtn.textContent = "⏹ 중지";
+  stopBtn.addEventListener("click", ()=>{ BATCH.running = false; if(BATCH.abort) BATCH.abort.abort(); });
+  const ok = { n:0, done:0 };
+  const results = [];
+  const prog = document.createElement("span");
+  head.appendChild(prog);
+  head.appendChild(stopBtn);
+  for(let i=0; i<items.length; i++){
+    if(!BATCH.running) break;
+    const x = items[i];
+    const card = document.createElement("div"); card.className = "q-run-item";
+    card.innerHTML = `<div class="q-run-line"><b>${escapeHtml(x.id)}</b> ${escapeHtml(x.title)} <span class="q-run-status">⏳ 실행 중…</span></div>
+      <div class="q-run-q">${escapeHtml(x.question||"")}</div>
+      <details><summary>답변 보기</summary><div class="q-run-text"></div></details>`;
+    box.appendChild(card);
+    const status = card.querySelector(".q-run-status");
+    prog.textContent = `▶ ${i+1}/${items.length} 실행 중 — thinking ${store.settings.thinking?"ON":"OFF"} · 온도 ${parseFloat($("temp").value)}`;
+    try{
+      const res = await askModelOnce(x.question, BATCH.abort.signal);
+      const auto = autoCheckQ(x, res.text);
+      if(auto==="✓") ok.n++;
+      ok.done++;
+      results.push({ id:x.id, question:x.question, answer:res.text, auto, metrics:res.metrics, error:res.error });
+      const spd = res.metrics && res.metrics.toks_per_s ? ` · ⚡ ${res.metrics.toks_per_s} tok/s` : "";
+      const err = res.error ? ` <span class="down">⚠ ${escapeHtml(res.error)}</span>` : "";
+      status.innerHTML = autoBadge(auto) + spd + err;
+      card.querySelector(".q-run-text").textContent = res.text || "(빈 답변)";
+    }catch(e){
+      ok.done++;
+      results.push({ id:x.id, question:x.question, answer:"", auto:"", metrics:null, error:String(e&&e.message||e) });
+      status.innerHTML = (e && e.name==="AbortError") ? '<span class="q-pill na">중단됨</span>' : `<span class="down">⚠ ${escapeHtml(String(e&&e.message||e))}</span>`;
+    }
+  }
+  BATCH.running = false;
+  head.innerHTML = `<span>✅ 완료 ${ok.done}/${items.length} · 🎯 자동 확인 정답 <b>${ok.n}/${ok.done}</b> (참고용)</span>`;
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "ghost small"; saveBtn.textContent = "📥 결과 저장 (JSON)";
+  saveBtn.addEventListener("click", ()=>{
+    downloadFile("qbank_run_"+dateStr()+".json", JSON.stringify({
+      at: Date.now(), model: currentModelKey, thinking: !!store.settings.thinking,
+      temperature: parseFloat($("temp").value), max_tokens: store.settings.maxTokens, results,
+    }, null, 2), "application/json");
+  });
+  head.appendChild(saveBtn);
+  return results;
+}
+
+// ---- 세트 간 델타 비교 (결과 비교 탭) ----
+function compareSets(a, b){
+  const agg = (s)=>{
+    const rs = s.results||[];
+    const autos = rs.map(r=>r.auto).filter(x=>x);
+    const toks = rs.map(r=>r.toks_per_s).filter(Boolean);
+    return {
+      rate: autos.length ? Math.round(autos.filter(x=>x==="✓").length/autos.length*100) : null,
+      toks: toks.length ? toks.reduce((p,c)=>p+c,0)/toks.length : null,
+    };
+  };
+  const perQ = (s, id)=>{
+    const rs = (s.results||[]).filter(r=>r.id===id);
+    const autos = rs.map(r=>r.auto).filter(x=>x);
+    const toks = rs.map(r=>r.toks_per_s).filter(Boolean);
+    const el = rs.map(r=>(r.elapsed_ms||0)/1000).filter(Boolean);
+    const tk = rs.map(r=>r.tokens).filter(Boolean);
+    const avg = xs => xs.length ? xs.reduce((p,c)=>p+c,0)/xs.length : null;
+    return {
+      auto: autos.length ? (autos.every(x=>x==="✓") ? "✓" : (autos.some(x=>x==="✓") ? "◐" : "✗")) : "-",
+      toks: avg(toks), elapsed: avg(el), tokens: avg(tk),
+    };
+  };
+  const ids = Array.from(new Set([...(a.results||[]), ...(b.results||[])].map(r=>r.id)))
+    .sort((x,y)=>parseInt(x.slice(1))-parseInt(y.slice(1)));
+  return { rows: ids.map(id=>({ id, a:perQ(a,id), b:perQ(b,id) })), a:agg(a), b:agg(b) };
+}
+function deltaTable(sa, sb){
+  if(!sa || !sb) return '<div class="qbank-empty">비교할 세트를 선택하세요.</div>';
+  const c = compareSets(sa, sb);
+  const arrow = (cur, prev, higherBetter, digits, suffix)=>{
+    if(cur==null || prev==null) return '<span class="flat">-</span>';
+    const d = cur - prev;
+    if(Math.abs(d) < (digits===0 ? 0.5 : 1e-9)) return '<span class="flat">＝</span>';
+    const good = higherBetter ? d > 0 : d < 0;
+    return `<span class="${good?"up":"down"}">${d>0?"▲":"▼"} ${Math.abs(d).toFixed(digits)}${suffix||""}</span>`;
+  };
+  const label = s => String(s.file).replace("answers_","").replace(".json","");
+  let html = `<div class="q-note">기준 <b>${escapeHtml(label(sa))}</b> → 대상 <b>${escapeHtml(label(sb))}</b> · `+
+    `정답률 ${c.a.rate==null?"-":c.a.rate+"%"} → ${c.b.rate==null?"-":c.b.rate+"%"} ${arrow(c.b.rate, c.a.rate, true, 0, "%p")} · `+
+    `평균 tok/s ${c.a.toks?c.a.toks.toFixed(1):"-"} → ${c.b.toks?c.b.toks.toFixed(1):"-"} ${arrow(c.b.toks, c.a.toks, true, 1)}</div>`;
+  html += '<table class="q-table"><thead><tr><th>Q</th><th>자동 (기준→대상)</th><th>tok/s 변화</th><th>소요(s) 변화</th><th>토큰 변화</th></tr></thead><tbody>';
+  for(const r of c.rows){
+    const autoCls = r.b.auto==="✓" ? "up" : (r.b.auto==="✗" ? "down" : "flat");
+    html += `<tr><td><b>${escapeHtml(r.id)}</b></td>
+      <td><span class="flat">${escapeHtml(r.a.auto)}</span> → <b class="${autoCls}">${escapeHtml(r.b.auto)}</b></td>
+      <td>${arrow(r.b.toks, r.a.toks, true, 1)}</td>
+      <td>${arrow(r.b.elapsed, r.a.elapsed, false, 1)}</td>
+      <td>${arrow(r.b.tokens, r.a.tokens, false, 0)}</td></tr>`;
+  }
+  return html + '</tbody></table>';
+}
+
+// ---- 전체 대화 Markdown 통합 내보내기 ----
+function allConversationsToMarkdown(){
+  let md = `# 전체 대화 통합 문서\n\n> ${store.conversations.length}개 대화 · ${new Date().toLocaleString("ko-KR")}\n\n---\n\n`;
+  md += store.conversations.map(c=>conversationToMarkdown(c)).join("\n\n---\n\n");
+  return md + "\n";
+}
+
+// ---- 전역 단축키 & 버튼 이벤트 배선 ----
+function wireEnhancements(){
+  renderShortcuts();
+
+  // 헤더/사이드바 버튼
+  $("searchBtn").addEventListener("click", ()=>{ if($("searchBar").classList.contains("open")) closeSearch(); else openSearch(); });
+  $("favBtn").addEventListener("click", ()=>{ const p=$("favPanel"); if(p.classList.contains("open")){ p.classList.remove("open"); } else { renderFavPanel(); p.classList.add("open"); } });
+  $("favCloseBtn").addEventListener("click", ()=>$("favPanel").classList.remove("open"));
+  $("searchClose").addEventListener("click", closeSearch);
+  $("searchNext").addEventListener("click", ()=>navSearch(1));
+  $("searchPrev").addEventListener("click", ()=>navSearch(-1));
+  $("searchInput").addEventListener("input", e=>doSearch(e.target.value));
+  $("searchInput").addEventListener("keydown", e=>{
+    if(e.key==="Enter"){ e.preventDefault(); navSearch(e.shiftKey?-1:1); }
+    else if(e.key==="Escape"){ e.preventDefault(); closeSearch(); }
+  });
+  $("shortcutBtn").addEventListener("click", ()=>{ renderShortcuts(); $("shortcutModal").classList.add("open"); });
+  $("shortcutClose").addEventListener("click", ()=>$("shortcutModal").classList.remove("open"));
+  $("shortcutModal").addEventListener("click", e=>{ if(e.target===$("shortcutModal")) $("shortcutModal").classList.remove("open"); });
+
+  // 내보내기 팝업
+  $("exportBtn").replaceWith($("exportBtn").cloneNode(true)); // 기존 리스너 제거
+  $("exportBtn").addEventListener("click", e=>{
+    e.stopPropagation();
+    const existing = document.getElementById("exportPop"); if(existing){ existing.remove(); return; }
+    const c = activeConv();
+    const pop = document.createElement("div"); pop.id="exportPop"; pop.className="regen-model-pop open";
+    pop.style.position="fixed"; pop.style.top="58px"; pop.style.right="60px"; pop.style.bottom="auto"; pop.style.left="auto";
+    pop.innerHTML = `<button data-x="html">🌐 이 대화 (HTML)</button><button data-x="md">📝 이 대화 (Markdown)</button><button data-x="json">📥 이 대화 (JSON)</button><button data-x="print">🖨 인쇄 / PDF</button><button data-x="allmd">📚 전체 대화 (Markdown 통합)</button><button data-x="all">🗃️ 전체 대화 백업 (JSON)</button><button data-x="import">📤 백업 가져오기 (JSON)</button>`;
+    pop.querySelectorAll("button").forEach(b=>b.addEventListener("click", ev=>{
+      ev.stopPropagation(); pop.remove(); const x=b.dataset.x;
+      if(x==="import"){ pickImportFile(); return; }
+      if(x==="all"){ downloadFile("all_chats_"+dateStr()+".json", JSON.stringify(store.conversations,null,2), "application/json"); return; }
+      if(x==="allmd"){ downloadFile("all_chats_"+dateStr()+".md", allConversationsToMarkdown(), "text/markdown"); return; }
+      if(!c || !c.messages.length){ toastMsg("내보낼 대화가 없어요"); return; }
+      if(x==="html") downloadFile("chat_"+dateStr()+".html", conversationToHTML(c), "text/html;charset=utf-8");
+      else if(x==="md") downloadFile("chat_"+dateStr()+".md", conversationToMarkdown(c), "text/markdown");
+      else if(x==="print") printConversation(c);
+      else downloadFile("chat_"+dateStr()+".json", JSON.stringify(c.messages,null,2), "application/json");
+    }));
+    document.body.appendChild(pop);
+    setTimeout(()=>{ const h=ev=>{ if(!pop.contains(ev.target)){ pop.remove(); document.removeEventListener("click",h,true); } }; document.addEventListener("click",h,true); },0);
+  });
+
+  // 드래그&드롭
+  window.addEventListener("dragenter", e=>{
+    if(!e.dataTransfer || !Array.from(e.dataTransfer.types||[]).includes("Files")) return;
+    e.preventDefault(); dragDepth++; $("dropOverlay").classList.add("show");
+  });
+  window.addEventListener("dragover", e=>{ if(e.dataTransfer && Array.from(e.dataTransfer.types||[]).includes("Files")) e.preventDefault(); });
+  window.addEventListener("dragleave", e=>{ dragDepth = Math.max(0, dragDepth-1); if(dragDepth===0) $("dropOverlay").classList.remove("show"); });
+  window.addEventListener("drop", async e=>{
+    if(!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+    e.preventDefault(); dragDepth=0; $("dropOverlay").classList.remove("show");
+    await handleDroppedFiles(Array.from(e.dataTransfer.files));
+  });
+
+  // 질문 뱅크
+  $("qbankBtn").addEventListener("click", async ()=>{
+    if($("qbankModal").classList.contains("open")){ closeQbank(); return; }
+    openQbank();
+    await loadQuestionBank();
+    renderQbankCats(qbankAll());
+    renderQbankStars(qbankAll());
+    renderQbankList();
+  });
+  $("qbankClose").addEventListener("click", closeQbank);
+  $("qbankModal").addEventListener("click", e=>{ if(e.target===$("qbankModal")) closeQbank(); });
+  document.querySelectorAll(".qbank-tabs button").forEach(b=>b.addEventListener("click", ()=>qbankTab(b.dataset.tab)));
+  $("qbankSearch").addEventListener("input", renderQbankList);
+  $("qbankRandom").addEventListener("click", qbankRandom);
+  $("qbankSort").addEventListener("change", renderQbankList);
+  $("qbankAddBtn").addEventListener("click", ()=>{
+    const f = $("qbankCustomForm");
+    if(f.hidden) openCustomForm(); else closeCustomForm();
+  });
+  $("qbankCustomSave").addEventListener("click", saveCustomQuestion);
+  $("qbankCustomCancel").addEventListener("click", closeCustomForm);
+  $("qbankSelAll").addEventListener("click", ()=>{ qbankAll().forEach(x=>QSEL.add(x.id)); renderQbankList(); updateQselCount(); });
+  $("qbankSelNone").addEventListener("click", ()=>{ QSEL.clear(); renderQbankList(); updateQselCount(); });
+  $("qbankRunBtn").addEventListener("click", runSelectedQuestions);
+
+  // 전역 키보드 단축키
+  document.addEventListener("keydown", e=>{
+    const ctrl = e.ctrlKey||e.metaKey;
+    const inField = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName||""));
+    if(ctrl && e.key && e.key.toLowerCase()==="k"){ e.preventDefault(); if($("searchBar").classList.contains("open")) closeSearch(); else openSearch(); return; }
+    if(ctrl && e.key && e.key.toLowerCase()==="b"){ e.preventDefault(); $("qbankBtn").click(); return; }
+    if(ctrl && e.key && e.key.toLowerCase()==="n"){ e.preventDefault(); if(!sending) $("newChatBtn").click(); return; }
+    if(ctrl && e.key==="/"){ e.preventDefault(); $("shortcutModal").classList.add("open"); return; }
+    if(e.key==="Escape"){
+      if($("qbankModal").classList.contains("open")){ closeQbank(); e.preventDefault(); return; }
+      if(!$("settingsPop").hidden){ toggleSettings(false); e.preventDefault(); return; }
+      if($("shortcutModal").classList.contains("open")){ $("shortcutModal").classList.remove("open"); e.preventDefault(); return; }
+      if($("searchBar").classList.contains("open")){ closeSearch(); e.preventDefault(); return; }
+      if($("favPanel").classList.contains("open")){ $("favPanel").classList.remove("open"); e.preventDefault(); return; }
+      const ep=document.getElementById("exportPop"); if(ep){ ep.remove(); e.preventDefault(); return; }
+    }
+    if(inField) return;
+  });
+}
+
+// -- init (모든 선언 이후 마지막에 실행) --
+(function(){
+  loadStore();
+  syncHistoryRef();
+  applyTheme(store.settings.theme || "dark");
+  $("temp").value = store.settings.temp ?? 0.7; updateTempDisplay(parseFloat($("temp").value));
+  $("maxTokensSel").value = String(store.settings.maxTokens || 2048);
+  $("personaSel").value = store.settings.persona || "";
+  $("thinkingChk").checked = !!store.settings.thinking;
+  updateModelLabel();
+  wireEnhancements();
+  renderAll(); input.focus();
+})();
+
+</script>
+</body>
+</html>
