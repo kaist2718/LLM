@@ -42,7 +42,7 @@ TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title} · Qwen3.5-9B 로컬 채팅</title>
+<title>{title}</title>
 <style>
 :root {{ color-scheme: light; }}
 body {{ margin: 0; font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; color: #24292f; background: #fff; line-height: 1.7; }}
@@ -109,7 +109,9 @@ def main():
         body = markdown.markdown(text, extensions=["extra", "toc"])
         title_match = re.search(r"^#\s+(.+)$", text, re.M)
         title = title_match.group(1).strip() if title_match else md_name
-        html = TEMPLATE.format(title=title, nav=render_nav(out_name), body=body)
+        site_name = "Qwen3.5-9B 로컬 채팅"
+        page_title = title if title == site_name else f"{title} · {site_name}"
+        html = TEMPLATE.format(title=page_title, nav=render_nav(out_name), body=body)
         (OUT / out_name).write_text(html, encoding="utf-8")
         print(f"생성: {OUT / out_name}")
 
