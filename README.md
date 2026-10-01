@@ -35,11 +35,15 @@ Windows 단일 GPU 환경에서 Qwen3.5-9B 한 종을 사전 양자화(bnb 4bit)
 
 ## 화면 구성 미리보기
 
+**스트리밍 생성 데모** — 답변이 토큰 단위로 흘러나오는 모습입니다.
+
+![생성 스트리밍 데모](docs/demo.gif)
+
 | 채팅 화면 | 질문 뱅크 (📚 / Ctrl+B) | 채점표 (HTML) |
 |---|---|---|
 | ![채팅 화면](docs/screenshots/chat.png) | ![질문 뱅크](docs/screenshots/question-bank.png) | ![채점표](docs/screenshots/score-sheet.png) |
 
-> 스크린샷은 `scripts/capture_screenshots.py`로 재생성할 수 있습니다.
+> 스크린샷은 `scripts/capture_screenshots.py`로, 데모 GIF는 `scripts/capture_demo.py`로 재생성할 수 있습니다.
 
 ## 파일 구조
 
@@ -57,7 +61,7 @@ Windows 단일 GPU 환경에서 Qwen3.5-9B 한 종을 사전 양자화(bnb 4bit)
 | `CONTRIBUTING.md` | 기여 가이드 (버그 리포트·PR 규칙) |
 | `.github/ISSUE_TEMPLATE/` | 이슈 템플릿 (버그 리포트·기능 제안) |
 | `tests/` | 질문 뱅크 단위 테스트 (`python -m unittest discover -s tests`) |
-| `scripts/` | 유틸: `build_docs.py`(문서 사이트 빌드)·`capture_screenshots.py`(UI 스크린샷 촬영) |
+| `scripts/` | 유틸: `build_docs.py`(문서 사이트 빌드)·`capture_screenshots.py`(UI 스크린샷)·`capture_demo.py`(데모 GIF) |
 | `docs/screenshots/` | README용 UI 스크린샷 |
 | `.github/workflows/` | GitHub Actions (테스트 실행·문서 사이트 배포) |
 | `.gitignore` / `.gitattributes` | 푸시 제외 규칙 / 개행 문자 규칙 |
@@ -175,7 +179,7 @@ Qwen3.5-9B는 4bit 양자화 시 대략 6GB 내외의 VRAM을 사용합니다 (�
 
 ## 로드맵 (v1.1 후보)
 
-다음 버전에서 다뤄볼 후보 아이디어입니다. 원하는 항목이 있으면 [이슈로 제안](https://github.com/kaist2718/LLM/issues/new?template=feature_request.yml)해 주세요.
+다음 버전에서 다뤄볼 후보 아이디어입니다. 진행 상황은 [v1.1 로드맵 프로젝트 보드](https://github.com/users/kaist2718/projects/1)에서 관리하고, 원하는 항목이 있으면 [이슈로 제안](https://github.com/kaist2718/LLM/issues/new?template=feature_request.yml)해 주세요.
 
 - **멀티 모델 지원** — Qwen3.5-9B 외 다른 로컬 모델을 UI에서 선택해 로드
 - **OCR 문서 지원** — 텍스트가 없는 스캔 PDF에서도 문자 추출

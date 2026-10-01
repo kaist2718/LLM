@@ -7,3 +7,7 @@
 *.md text eol=lf
 *.html text eol=lf
 *.txt text eol=lf
+
+# GitHub 언어 통계 — 문서·스크린샷은 언어 바에서 제외
+docs/** linguist-documentation
+*.md linguist-documentation
