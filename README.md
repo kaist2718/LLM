@@ -3,10 +3,13 @@
 [![tests](https://github.com/kaist2718/LLM/actions/workflows/tests.yml/badge.svg)](https://github.com/kaist2718/LLM/actions/workflows/tests.yml)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![docs](https://img.shields.io/badge/docs-GitHub%20Pages-2ea44f)](https://kaist2718.github.io/LLM/)
 
 Windows 단일 GPU 환경에서 Qwen3.5-9B 한 종을 사전 양자화(bnb 4bit)로 빠르게 불러오는 Flask 로컬 앱입니다. 기본 시스템 프롬프트는 범용 어시스턴트로 설정되어 있습니다. CUDA 사용 시 4bit 양자화를 적용해 SSE 스트리밍 채팅과 PDF/엑셀 문서 질의를 지원합니다.
 
 > 📖 처음 사용한다면 [MANUAL.md](MANUAL.md)의 단계별 사용 설명서를 따라가세요 (설치·화면 사용법·질문 뱅크·문제 해결 포함).
+>
+> 🌐 전체 문서는 GitHub Pages 문서 사이트에서도 읽을 수 있습니다: **https://kaist2718.github.io/LLM/**
 
 ## 모델
 
@@ -32,11 +35,11 @@ Windows 단일 GPU 환경에서 Qwen3.5-9B 한 종을 사전 양자화(bnb 4bit)
 
 ## 화면 구성 미리보기
 
-> 📷 스크린샷 자리 — 앱을 실행해 캡처한 이미지를 `docs/screenshots/` 폴더에 넣고 아래 슬롯을 채워 주세요.
-
 | 채팅 화면 | 질문 뱅크 (📚 / Ctrl+B) | 채점표 (HTML) |
 |---|---|---|
-| `docs/screenshots/chat.png` | `docs/screenshots/question-bank.png` | `docs/screenshots/score-sheet.png` |
+| ![채팅 화면](docs/screenshots/chat.png) | ![질문 뱅크](docs/screenshots/question-bank.png) | ![채점표](docs/screenshots/score-sheet.png) |
+
+> 스크린샷은 `scripts/capture_screenshots.py`로 재생성할 수 있습니다.
 
 ## 파일 구조
 
@@ -54,7 +57,10 @@ Windows 단일 GPU 환경에서 Qwen3.5-9B 한 종을 사전 양자화(bnb 4bit)
 | `CONTRIBUTING.md` | 기여 가이드 (버그 리포트·PR 규칙) |
 | `.github/ISSUE_TEMPLATE/` | 이슈 템플릿 (버그 리포트·기능 제안) |
 | `tests/` | 질문 뱅크 단위 테스트 (`python -m unittest discover -s tests`) |
-| `.gitignore` | 가상환경·모델 가중치·실행 결과물 등 푸시 제외 규칙 |
+| `scripts/` | 유틸: `build_docs.py`(문서 사이트 빌드)·`capture_screenshots.py`(UI 스크린샷 촬영) |
+| `docs/screenshots/` | README용 UI 스크린샷 |
+| `.github/workflows/` | GitHub Actions (테스트 실행·문서 사이트 배포) |
+| `.gitignore` / `.gitattributes` | 푸시 제외 규칙 / 개행 문자 규칙 |
 
 ## 설치 및 실행 (Windows, uv, Python 3.12, CUDA)
 
@@ -123,7 +129,7 @@ $env:PYTHONUTF8 = 1
 - **생성 설정(⚙️)**: 헤더의 ⚙️ 버튼에서 온도(기본 0.7)·최대 생성 길이·말투/역할 프리셋·추론(thinking) 모드를 조정합니다.
 - **말투/역할**: 설정 팝업에서 답변 스타일 프리셋을 선택하면 기본 스타일 위에 덧입혀집니다 (기본값: 기본 스타일).
 - **모델 사전 로드**: 서버 시작 시 백그라운드로 모델이 자동 로드됩니다. `⚡ 모델 로드` 버튼으로 즉시 로드할 수도 있습니다.
-- **질문 뱅크**: 📚 버튼 또는 **Ctrl+B** — 추론 질문 34개(A~G 추론 28 + H 재미있는 추론 6)를 번호순으로 검색·카테고리 필터로 골라 **클릭만으로 질문**하고(답변은 한국어로 강제), 여러 문항을 선택해 **한 번에 순차 실행**하며, 정답 요지를 확인하고, 📊 결과 비교 탭에서 실행 이력(자동 정답률·속도)과 **세트 간 증감(▲▼)** 을 차트로 비교합니다. 정렬(번호·난이도·제목)·난이도(★) 필터를 제공하고, **＋ 내 질문 추가**로 나만의 문항을 저장해 기존 문항과 함께 실행·삭제할 수 있습니다. 질문 본문은 목록에 항상 표시되고, 📊 결과 비교 탭에는 세트별 **정답률 추이 라인 차트**(문항 선택 가능)가 제공됩니다.
+- **질문 뱅크**: 📚 버튼 또는 **Ctrl+B** — 추론 질문 34개(A~G 추론 28 + H 재미있는 추론 6)를 번호순으로 검색·카테고리 필터로 골라 **클릭만으로 질문**하고(답변은 한국어로 강제), 여러 문항을 선택해 **한 번에 순차 실행**하며, 정답 요지를 확인하고, 📊 결과 비교 탭에서 실행 이력(자동 정답률·속도)과 **세트 간 증감(▲▼)** 을 차트로 비교합니다. 정렬(번호·난이도·제목)·난이도(★) 필터를 제공하고, **＋ 내 질문 추가**로 나만의 문항을 저장해 기존 문항과 함께 실행·삭제할 수 있습니다. 질문 본문은 목록에 항상 표시되고, 📊 결과 비교 탭에는 세트별 **정답률 추이 라인 차트**(문항 선택 가능)가 제공됩니다. 주소창에 `?panel=qbank`를 붙여 열면(예: `http://127.0.0.1:5000/?panel=qbank`) 질문 뱅크 패널이 바로 열립니다.
 - **내보내기**: 📥 버튼에서 현재 대화를 HTML(스타일 포함 단일 문서)·Markdown·JSON으로 저장하거나, **전체 대화를 하나의 Markdown**으로 통합 저장하고, **인쇄/PDF**로 바로 출력하며, **JSON 백업 가져오기**로 대화를 복원할 수 있습니다.
 - **PDF/엑셀**: 첨부 버튼 또는 드롭으로 추가. 텍스트가 추출되지 않거나 손상된 문서는 오류를 돌려줍니다.
 - **편집**: 사용자 메시지를 더블클릭해 수정하면 해당 지점 뒤 답변을 재생성합니다.
@@ -166,6 +172,17 @@ Qwen3.5-9B는 4bit 양자화 시 대략 6GB 내외의 VRAM을 사용합니다 (�
 - Qwen3.5-9B 카드의 벤치마크 수치는 해당 카드의 조건에서 보고한 점수이며 타 카드 점수와 직접 순위 비교에 쓰면 안 됩니다.
 - [KMMLU-Redux / KMMLU-Pro 논문](https://arxiv.org/html/2507.08924v2)은 기존 KMMLU의 노이즈/오염 문제를 지적합니다. [Ko-H5 연구](https://aclanthology.org/2024.acl-long.177/)도 사설 테스트셋 및 누수 분석의 중요성을 다룹니다.
 - 의미 있는 자체 평가는 같은 질문 세트, 동일한 생성 설정, 고정 모델 revision, blind human scoring으로 해야 합니다. 앱의 tok/s와 답변 길이는 품질 점수가 아닙니다.
+
+## 로드맵 (v1.1 후보)
+
+다음 버전에서 다뤄볼 후보 아이디어입니다. 원하는 항목이 있으면 [이슈로 제안](https://github.com/kaist2718/LLM/issues/new?template=feature_request.yml)해 주세요.
+
+- **멀티 모델 지원** — Qwen3.5-9B 외 다른 로컬 모델을 UI에서 선택해 로드
+- **OCR 문서 지원** — 텍스트가 없는 스캔 PDF에서도 문자 추출
+- **음성 입력/출력** — 마이크로 질문하고 답변을 음성으로 듣기
+- **대화 자동 백업** — localStorage 외에 폴더 자동 저장 옵션
+- **Docker 배포** — 컨테이너로 한 번에 설치·실행
+- **영문 문서** — README·MANUAL 영어 번역본
 
 ## 라이선스
 

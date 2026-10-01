@@ -2613,6 +2613,8 @@ function wireEnhancements(){
   updateModelLabel();
   wireEnhancements();
   renderAll(); input.focus();
+  // 딥링크: ?panel=qbank 로 질문 뱅크 패널 바로 열기
+  if(new URLSearchParams(location.search).get("panel")==="qbank"){ $("qbankBtn").click(); }
 })();
 
 </script>

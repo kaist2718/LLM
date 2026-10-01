@@ -14,11 +14,17 @@ models/
 # -- 실행 결과물 (채점표·답변 전문, 실행 시 자동 생성) --
 results/
 
+# -- 문서 사이트 빌드 산출물 (GitHub Actions가 생성) --
+site/
+
 # -- 로컬 에이전트/에디터 설정 --
 .claude/
 .grok/
 .vscode/
 .idea/
+
+# -- 스크린샷 촬영용 Chrome 임시 프로필 --
+.chrome-tmp/
 
 # -- OS 잡동사니 --
 Thumbs.db
