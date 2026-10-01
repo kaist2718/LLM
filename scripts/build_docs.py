@@ -22,6 +22,7 @@ OUT = ROOT / (sys.argv[1] if len(sys.argv) > 1 else "site")
 # (출력 파일명, 원본 마크다운, 내비게이션 제목)
 PAGES = [
     ("index.html", "README.md", "홈"),
+    ("readme-en.html", "README.en.md", "English"),
     ("manual.html", "MANUAL.md", "사용 설명서"),
     ("experiments.html", "EXPERIMENTS.md", "실험 모음"),
     ("questions.html", "REASONING_QUESTIONS.md", "질문 뱅크"),
@@ -31,6 +32,7 @@ PAGES = [
 # 문서 간 링크 치환 규칙 (파일명 -> 사이트 내 경로)
 MD_LINKS = {
     "README.md": "index.html",
+    "README.en.md": "readme-en.html",
     "MANUAL.md": "manual.html",
     "EXPERIMENTS.md": "experiments.html",
     "REASONING_QUESTIONS.md": "questions.html",

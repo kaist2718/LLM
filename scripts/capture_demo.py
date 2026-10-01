@@ -6,19 +6,22 @@
 (웹 UI 자체는 그대로이며, 백엔드만 예시 응답으로 대체한다.)
 
 사용법:
-    .venv\\Scripts\\python.exe scripts\\capture_demo.py
+    .venv\\Scripts\\python.exe scripts\\capture_demo.py          # 스트리밍 데모 -> docs/demo.gif
+    .venv\\Scripts\\python.exe scripts\\capture_demo.py stop      # Esc 중단 데모 -> docs/demo-stop.gif
 
-결과: docs/demo.gif
 의존성: pip install websocket-client pillow
 """
 import base64
 import json
+import os
 import shutil
+import socket
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
 
@@ -26,16 +29,9 @@ import websocket
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "docs" / "demo.gif"
-CHROME_PROFILE = ROOT / ".chrome-tmp"
-MOCK_PORT = 5056
-CDP_PORT = 9333
 WINDOW = (1440, 900)
 GIF_WIDTH = 960
-FRAMES = 20
 FRAME_INTERVAL = 0.55  # 초
-
-QUESTION = "이 앱의 장점 3가지만 알려 줘"
 
 ANSWER = (
     "좋은 질문이에요! **Qwen3.5-9B 로컬 채팅**의 장점은 크게 세 가지입니다.\n\n"
@@ -48,8 +44,37 @@ ANSWER = (
     "더 궁금한 점이 있으면 말씀해 주세요! 😊"
 )
 
+# 모드별 촬영 설정 — stop 모드는 Esc 키로 생성을 중단하는 장면을 녹화한다.
+MODES = {
+    "stream": {
+        "out": ROOT / "docs" / "demo.gif",
+        "question": "이 앱의 장점 3가지만 알려 줘",
+        "answer": ANSWER,
+        "frames": 20,
+        "stop_at": None,
+    },
+    "stop": {
+        "out": ROOT / "docs" / "demo-stop.gif",
+        "question": "인공지능의 미래에 대해 상세히 설명해 줘",
+        "answer": ("인공지능의 미래는 밝습니다! 앞으로 3가지 흐름이 특히 주목받을 거예요.\n\n"
+                   "**첫째, 개인화된 AI 비서입니다.** 모두의 일상에 맞춰 학습하는 비서가 보편화됩니다.\n\n"
+                   "**둘째, 로컬 AI의 확산입니다.** 클라우드 없이도 기기에서 직접 추론하는 모델이 늘어납니다.\n\n"
+                   "**셋째, 창작 도구와의 융합입니다.** 글쓰기·코딩·디자인 전반에 AI가 스며듭니다.\n\n"
+                   "이러한 변화는 비용과 접근성을 크게 낮출 거예요. 추가로 궁금한 점이 있으면 말씀해 주세요!"),
+        "frames": 16,
+        "stop_at": 3.0,  # 초 — 이 시간에 Esc를 눌러 생성 중단
+    },
+}
+CONFIG = MODES["stream"]
 
-def start_mock_server():
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def start_mock_server(port):
     """index.html를 그대로 서빙하고 /api/chat만 예시 스트리밍으로 응답하는 모의 서버."""
 
     class Handler(BaseHTTPRequestHandler):
@@ -82,6 +107,7 @@ def start_mock_server():
                 self.end_headers()
 
         def do_POST(self):
+            self.connection.settimeout(3)  # 클라이언트가 끊으면 쓰기가 오래 막히지 않도록
             length = int(self.headers.get("Content-Length", 0))
             self.rfile.read(length)
             if self.path != "/api/chat":
@@ -92,18 +118,22 @@ def start_mock_server():
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
+            answer = CONFIG["answer"]
             chunk_size = 2
             delay = 0.05
-            for i in range(0, len(ANSWER), chunk_size):
-                event = {"token": ANSWER[i : i + chunk_size]}
-                self.wfile.write(f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode())
+            try:
+                for i in range(0, len(answer), chunk_size):
+                    event = {"token": answer[i : i + chunk_size]}
+                    self.wfile.write(f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode())
+                    self.wfile.flush()
+                    time.sleep(delay)
+                done = {"done": True, "metrics": {"toks_per_s": 38.6, "elapsed_ms": 5100, "para": 6}}
+                self.wfile.write(f"data: {json.dumps(done)}\n\n".encode())
                 self.wfile.flush()
-                time.sleep(delay)
-            done = {"done": True, "metrics": {"toks_per_s": 38.6, "elapsed_ms": 5100, "para": 6}}
-            self.wfile.write(f"data: {json.dumps(done)}\n\n".encode())
-            self.wfile.flush()
+            except OSError:
+                pass  # 클라이언트가 생성을 중단하고 연결을 끊음 (Esc 데모)
 
-    server = HTTPServer(("127.0.0.1", MOCK_PORT), Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 
@@ -123,7 +153,7 @@ class CDP:
 
     def __init__(self, port):
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        targets = json.loads(opener.open(f"http://127.0.0.1:{port}/json/list").read())
+        targets = json.loads(opener.open(f"http://127.0.0.1:{port}/json/list", timeout=3).read())
         page = next(t for t in targets if t.get("type") == "page")
         self.ws = websocket.create_connection(page["webSocketDebuggerUrl"], timeout=60, http_proxy_host=None)
         self._id = 0
@@ -153,7 +183,12 @@ class CDP:
 
 
 def main():
-    server = start_mock_server()
+    global CONFIG
+    CONFIG = MODES[sys.argv[1]] if len(sys.argv) > 1 else MODES["stream"]
+    mock_port = free_port()  # 이전 실행의 잔여 프로세스와 충돌하지 않도록 매번 새 포트
+    cdp_port = free_port()
+    profile = ROOT / f".chrome-tmp-{os.getpid()}"  # 실행마다 고유 프로필 (락 충돌 방지)
+    server = start_mock_server(mock_port)
     chrome = subprocess.Popen(
         [
             find_chrome(),
@@ -161,8 +196,8 @@ def main():
             "--disable-gpu",
             "--hide-scrollbars",
             "--no-proxy-server",
-            f"--user-data-dir={CHROME_PROFILE}",
-            f"--remote-debugging-port={CDP_PORT}",
+            f"--user-data-dir={profile}",
+            f"--remote-debugging-port={cdp_port}",
             "--remote-allow-origins=*",
             f"--window-size={WINDOW[0]},{WINDOW[1]}",
             "about:blank",
@@ -173,9 +208,9 @@ def main():
     try:
         cdp = None
         last_err = None
-        for _ in range(50):
+        for _ in range(100):  # Chrome 냉기동 시 최대 30초 대기
             try:
-                cdp = CDP(CDP_PORT)
+                cdp = CDP(cdp_port)
                 break
             except Exception as e:
                 last_err = e
@@ -184,7 +219,7 @@ def main():
             raise SystemExit(f"Chrome CDP 연결 실패: {last_err}")
 
         cdp.call("Page.enable")
-        cdp.call("Page.navigate", {"url": f"http://127.0.0.1:{MOCK_PORT}/"})
+        cdp.call("Page.navigate", {"url": f"http://127.0.0.1:{mock_port}/"})
         for _ in range(50):
             state = cdp.evaluate("document.readyState")["result"].get("value")
             if state == "complete":
@@ -193,36 +228,42 @@ def main():
         time.sleep(1.0)  # 초기 렌더 안정화
 
         # 질문 전송 (스트리밍 시작) 후 프레임 수집
-        cdp.evaluate(f'submitUser({json.dumps(QUESTION, ensure_ascii=False)})')
+        cdp.evaluate(f'submitUser({json.dumps(CONFIG["question"], ensure_ascii=False)})')
         pngs = []
-        for i in range(FRAMES):
+        frames_n = CONFIG["frames"]
+        for i in range(frames_n):
             pngs.append(cdp.screenshot_png())
-            print(f"프레임 {i + 1}/{FRAMES}")
+            text_len = cdp.evaluate("document.body.innerText.length")["result"].get("value")
+            print(f"프레임 {i + 1}/{frames_n} (화면 텍스트 {text_len}자)")
+            if CONFIG["stop_at"] is not None and (i + 1) * FRAME_INTERVAL >= CONFIG["stop_at"] and len(pngs) == i + 1:
+                # Esc 키 눌러 생성 중단 (한 번만)
+                cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))")
+                CONFIG["stop_at"] = None
+                print("Esc 전송 — 생성 중단")
             time.sleep(FRAME_INTERVAL)
         cdp.close()
 
         frames = [Image.open(BytesIO(p)).convert("RGB") for p in pngs]
         height = int(frames[0].height * GIF_WIDTH / frames[0].width)
         frames = [f.resize((GIF_WIDTH, height), Image.LANCZOS) for f in frames]
-        OUT.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG["out"].parent.mkdir(parents=True, exist_ok=True)
+        out = CONFIG["out"]
         frames[0].save(
-            OUT,
+            out,
             save_all=True,
             append_images=frames[1:],
             duration=int(FRAME_INTERVAL * 1000),
             loop=0,
             optimize=True,
         )
-        with Image.open(OUT) as gif:
-            print(f"저장: {OUT} ({gif.n_frames}프레임, {OUT.stat().st_size // 1024}KB)")
+        with Image.open(out) as gif:
+            print(f"저장: {out} ({gif.n_frames}프레임, {out.stat().st_size // 1024}KB)")
     finally:
-        chrome.terminate()
-        try:
-            chrome.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            chrome.kill()
+        # 프로세스 트리 전체 종료 (자식 Chrome이 프로필을 잠그지 않도록)
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(chrome.pid)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         server.shutdown()
-        shutil.rmtree(CHROME_PROFILE, ignore_errors=True)
+        shutil.rmtree(profile, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -24,7 +24,8 @@ CHROME_CANDIDATES = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
 ]
-CHROME_PROFILE = ROOT / ".chrome-tmp"  # 헤드리스 전용 프로필 (기존 Chrome 인스턴스와 충돌 방지)
+# 실행마다 고유한 헤드리스 전용 프로필 (기존 Chrome 인스턴스·이전 실행과 충돌 방지)
+CHROME_PROFILE = ROOT / f".chrome-tmp-{os.getpid()}"
 
 
 def find_chrome():
@@ -98,6 +99,7 @@ def main():
         except subprocess.TimeoutExpired:
             server.kill()
         shutil.rmtree(CHROME_PROFILE, ignore_errors=True)
+        shutil.rmtree(ROOT / ".chrome-tmp", ignore_errors=True)
     print("스크린샷 촬영 완료")
 
 

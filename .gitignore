@@ -24,7 +24,7 @@ site/
 .idea/
 
 # -- 스크린샷 촬영용 Chrome 임시 프로필 --
-.chrome-tmp/
+.chrome-tmp*/
 
 # -- OS 잡동사니 --
 Thumbs.db

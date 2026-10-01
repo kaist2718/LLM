@@ -5,6 +5,8 @@
 [![python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![docs](https://img.shields.io/badge/docs-GitHub%20Pages-2ea44f)](https://kaist2718.github.io/LLM/)
 
+**한국어** | [English](README.en.md)
+
 Windows 단일 GPU 환경에서 Qwen3.5-9B 한 종을 사전 양자화(bnb 4bit)로 빠르게 불러오는 Flask 로컬 앱입니다. 기본 시스템 프롬프트는 범용 어시스턴트로 설정되어 있습니다. CUDA 사용 시 4bit 양자화를 적용해 SSE 스트리밍 채팅과 PDF/엑셀 문서 질의를 지원합니다.
 
 > 📖 처음 사용한다면 [MANUAL.md](MANUAL.md)의 단계별 사용 설명서를 따라가세요 (설치·화면 사용법·질문 뱅크·문제 해결 포함).
@@ -39,11 +41,15 @@ Windows 단일 GPU 환경에서 Qwen3.5-9B 한 종을 사전 양자화(bnb 4bit)
 
 ![생성 스트리밍 데모](docs/demo.gif)
 
+**생성 중단 (Esc)** — 생성 도중 Esc를 누르면 서버의 실제 생성도 즉시 멈추고, 지금까지의 답변이 그대로 남습니다.
+
+![생성 중단 데모](docs/demo-stop.gif)
+
 | 채팅 화면 | 질문 뱅크 (📚 / Ctrl+B) | 채점표 (HTML) |
 |---|---|---|
 | ![채팅 화면](docs/screenshots/chat.png) | ![질문 뱅크](docs/screenshots/question-bank.png) | ![채점표](docs/screenshots/score-sheet.png) |
 
-> 스크린샷은 `scripts/capture_screenshots.py`로, 데모 GIF는 `scripts/capture_demo.py`로 재생성할 수 있습니다.
+> 스크린샷은 `scripts/capture_screenshots.py`로, 데모 GIF는 `scripts/capture_demo.py`로 (중단 데모는 `capture_demo.py stop`) 재생성할 수 있습니다.
 
 ## 파일 구조
 
@@ -59,6 +65,7 @@ Windows 단일 GPU 환경에서 Qwen3.5-9B 한 종을 사전 양자화(bnb 4bit)
 | `run_questions.bat` | 질문 뱅크 원클릭 실행 (서버 자동 시작 포함) |
 | `MANUAL.md` | 상세 사용 설명서 |
 | `CONTRIBUTING.md` | 기여 가이드 (버그 리포트·PR 규칙) |
+| `README.en.md` | 영문 README (초안) |
 | `.github/ISSUE_TEMPLATE/` | 이슈 템플릿 (버그 리포트·기능 제안) |
 | `tests/` | 질문 뱅크 단위 테스트 (`python -m unittest discover -s tests`) |
 | `scripts/` | 유틸: `build_docs.py`(문서 사이트 빌드)·`capture_screenshots.py`(UI 스크린샷)·`capture_demo.py`(데모 GIF) |
