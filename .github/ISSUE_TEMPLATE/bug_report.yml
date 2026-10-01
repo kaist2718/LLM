@@ -1,0 +1,48 @@
+name: 🐛 버그 리포트
+description: 앱에서 문제가 있으면 알려 주세요
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        자세한 정보를 주실수록 빨리 해결할 수 있습니다.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 어떤 문제가 있나요?
+      description: 무엇을 했고, 무엇이 예상이며, 실제로 무엇이 일어났는지 적어 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 절차
+      description: 1, 2, 3 ... 단계로 적어 주세요.
+      placeholder: |
+        1. start.bat로 서버를 실행한다
+        2. 질문 뱅크(📚)를 연다
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 환경
+      description: OS, GPU/VRAM, Python 버전 등
+      placeholder: "Windows 11, RTX 3060 12GB, Python 3.12"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 로그 / 오류 메시지
+      description: 터미널에 출력된 오류 전문을 붙여넣어 주세요.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 확인 사항
+      options:
+        - label: README의 설치 절차를 그대로 따랐습니다
+        - label: MANUAL.md의 문제 해결 절차를 확인했습니다

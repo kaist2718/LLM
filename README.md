@@ -30,6 +30,14 @@ Windows 단일 GPU 환경에서 Qwen3.5-9B 한 종을 사전 양자화(bnb 4bit)
 - 다크/라이트 테마, 마크다운 렌더링과 코드 복사
 - 질문 뱅크 (웹 UI 📚/Ctrl+B에서 클릭만으로 질문·결과 비교, `run_questions.bat` 원클릭 실행 → thinking ON/OFF 비교 대시보드가 포함된 HTML·Markdown·CSV 채점표 자동 생성, Ctrl+C 중단 시에도 지금까지 결과로 채점표 생성)
 
+## 화면 구성 미리보기
+
+> 📷 스크린샷 자리 — 앱을 실행해 캡처한 이미지를 `docs/screenshots/` 폴더에 넣고 아래 슬롯을 채워 주세요.
+
+| 채팅 화면 | 질문 뱅크 (📚 / Ctrl+B) | 채점표 (HTML) |
+|---|---|---|
+| `docs/screenshots/chat.png` | `docs/screenshots/question-bank.png` | `docs/screenshots/score-sheet.png` |
+
 ## 파일 구조
 
 | 파일 | 역할 |
@@ -43,6 +51,8 @@ Windows 단일 GPU 환경에서 Qwen3.5-9B 한 종을 사전 양자화(bnb 4bit)
 | `run_questions.py` | 질문 뱅크 실행 + 채점표 자동 생성 |
 | `run_questions.bat` | 질문 뱅크 원클릭 실행 (서버 자동 시작 포함) |
 | `MANUAL.md` | 상세 사용 설명서 |
+| `CONTRIBUTING.md` | 기여 가이드 (버그 리포트·PR 규칙) |
+| `.github/ISSUE_TEMPLATE/` | 이슈 템플릿 (버그 리포트·기능 제안) |
 | `tests/` | 질문 뱅크 단위 테스트 (`python -m unittest discover -s tests`) |
 | `.gitignore` | 가상환경·모델 가중치·실행 결과물 등 푸시 제외 규칙 |
 
