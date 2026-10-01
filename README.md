@@ -1,5 +1,9 @@
 # Qwen3.5-9B 로컬 채팅
 
+[![tests](https://github.com/kaist2718/LLM/actions/workflows/tests.yml/badge.svg)](https://github.com/kaist2718/LLM/actions/workflows/tests.yml)
+[![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+
 Windows 단일 GPU 환경에서 Qwen3.5-9B 한 종을 사전 양자화(bnb 4bit)로 빠르게 불러오는 Flask 로컬 앱입니다. 기본 시스템 프롬프트는 범용 어시스턴트로 설정되어 있습니다. CUDA 사용 시 4bit 양자화를 적용해 SSE 스트리밍 채팅과 PDF/엑셀 문서 질의를 지원합니다.
 
 > 📖 처음 사용한다면 [MANUAL.md](MANUAL.md)의 단계별 사용 설명서를 따라가세요 (설치·화면 사용법·질문 뱅크·문제 해결 포함).
@@ -152,3 +156,7 @@ Qwen3.5-9B는 4bit 양자화 시 대략 6GB 내외의 VRAM을 사용합니다 (�
 - Qwen3.5-9B 카드의 벤치마크 수치는 해당 카드의 조건에서 보고한 점수이며 타 카드 점수와 직접 순위 비교에 쓰면 안 됩니다.
 - [KMMLU-Redux / KMMLU-Pro 논문](https://arxiv.org/html/2507.08924v2)은 기존 KMMLU의 노이즈/오염 문제를 지적합니다. [Ko-H5 연구](https://aclanthology.org/2024.acl-long.177/)도 사설 테스트셋 및 누수 분석의 중요성을 다룹니다.
 - 의미 있는 자체 평가는 같은 질문 세트, 동일한 생성 설정, 고정 모델 revision, blind human scoring으로 해야 합니다. 앱의 tok/s와 답변 길이는 품질 점수가 아닙니다.
+
+## 라이선스
+
+이 저장소의 **코드**는 [MIT License](LICENSE)입니다. 모델 가중치(Qwen3.5-9B 및 사전 양자화 파생물)는 Hugging Face의 모델 라이선스를 따르므로, 배포·상업 이용 전에 공식 모델 카드의 최신 사용 조건을 확인하세요.
